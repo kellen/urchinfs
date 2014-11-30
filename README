@@ -1,0 +1,17 @@
+urchin-fs
+=========
+
+A FUSE-based filesystem which finds and reads arbitrary metadata files
+and presents a faceted-search-style view on the containing directories.
+
+Motivation
+----------
+
+Media file organization: id3 is insufficient for correctly organized 
+mp3 collections, video/media collections have no such standard. 
+
+Most media management programs organize only files, but the logical 
+unit of organization is the *directory*, not the file. An "album"
+may contain mp3/flac/ogg files, cover/cd scans, text files, etc. A
+"movie" may contain multiple video files, samples, subtitles, cover
+scans, etc.
