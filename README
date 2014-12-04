@@ -15,3 +15,29 @@ unit of organization is the *directory*, not the file. An "album"
 may contain mp3/flac/ogg files, cover/cd scans, text files, etc. A
 "movie" may contain multiple video files, samples, subtitles, cover
 scans, etc.
+
+Prerequisites
+-------------
+
+### Debian/Ubuntu
+
+Add d-apt sources:
+
+```
+sudo wget http://master.dl.sourceforge.net/project/d-apt/files/d-apt.list \
+          -O /etc/apt/sources.list.d/d-apt.list
+sudo apt-get update 
+sudo apt-get -y --allow-unauthenticated install --reinstall d-apt-keyring 
+sudo apt-get update
+```
+
+Verify public key matches `0xEBCF975E5BA24D5E`
+
+Install fuse and dmd:
+
+```
+sudo apt-get install \
+     fuse libfuse2 libfuse-dev \
+     dmd-bin
+```
+
