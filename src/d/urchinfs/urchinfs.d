@@ -1,13 +1,35 @@
 import dfuse.fuse;
 import std.algorithm, std.conv, std.stdio, std.string;
-import std.path;
+import std.path, std.array;
+
+class UrchinFSEntry {
+    string display_name;
+    string[] metadata_sources;
+    string[][string] metadata;
+}
+
+class UrchinFSResult {
+    string[] keys;
+    UrchinFSEntry[] entries;
+    string[] listing;
+
+    this(string[] keys, UrchinFSEntry[] entries) {
+        this.keys = keys;
+        this.entries = entries;
+        this.listing = [];
+    }
+}
 
 class UrchinFS : Operations {
+    static const string FACET_PREFIX = "+";
+    static const string OR = FACET_PREFIX ~ "OR";
+    enum parsed { KEY, VAL, OR, NONE, DIR }
 
     // { metadata_key -> { metadata_value -> { display_name -> bool } }}
     // the last nested map is a hack due to no set type in dlang
 
     bool[string][string][string] metadata_cache;
+    UrchinFSEntry[] entries;
 
     this() {
         // TODO fetch actual data from disk
@@ -26,33 +48,125 @@ class UrchinFS : Operations {
         metadata_cache["year"] = years;
     }
 
-    string[] parse_pair(const(char)[][] parts, string[] so_far) {
-        if(parts.length == 0) {
-            return so_far;
+    string[] get_results(const(char)[][] parts) {
+        // strip off any empty leading sections of the path
+        int cur = 0;
+        while(cur < parts.length && parts[cur].empty) {
+            cur++;
         }
+        parts = parts[cur..parts.length];
 
-        bool[string][string] vals = (parts[0] in metadata_cache);
-        if(vals !is null) {
-            if(parts.length > 1) {
-                bool[string] dirs = (parts[1] in vals);
-                if(dirs !is null) {
-                    
+        int index = 0;
+        string[] keys;
+        string[][] values;
+        parsed last = parsed.NONE;
 
+        while(index < parts.length) {
+            string part = to!string(parts[index]);
 
+            if(startsWith(part, FACET_PREFIX) && part != OR) {
+                // this is a key
+                last = parsed.KEY;
+                keys ~= part;
+                stdout.writefln("key: %s", part);
+            } else if (last == parsed.VAL && part == OR) {
+                // this is an or
+                last = parsed.OR;
+                stdout.writefln("OR: %s", part);
+            } else if(last == parsed.KEY || last == parsed.OR) {
+                // this is a value
+                last = parsed.VAL;
+                stdout.writefln("val: %s", part);
+                if(last == parsed.KEY) {
+                    string[]
 
-
-                    return from_parts(parts[1..parts.length], so_far);
+                        // HERE
+                    values ~= []
+                } else {
+                    values[
                 }
-                throw new FuseException(errno.ENOENT);
-
-            } 
-            return vals.keys;
+            } else {
+                // this must be a dir
+                last = parsed.DIR;
+                stdout.writefln("dir: %s", part);
+            }
+            index++;
         }
-        throw new FuseException(errno.ENOENT);
+        stdout.writeln("----");
+        return [];
     }
 
+    /*
+    string[] get_results(const(char)[][] parts, UrchinFSResult result) {
+        // possible paths showing up here:
+        // parts.length     path
+        // 0                /
+        // 1                /key
+        // 2                /key/value
+        // 3                /key/value/key
+        // 3                /key/value1/+OR
+        // 4                /key/value1/+OR/value2
+        // TODO tests: path/with///////multiple/slashes/
+        // TODO tests: / <- how is root handled?
+        // TODO tests: /key/value/NONEXISTENTKEY/
+        // TODO tests: /key/value-with-no-results/key/ ???
+        // TODO tests: /dir <- not a key
+
+
+        if(parts.empty) {
+            // FIXME generate the result listing
+            return result;
+        }
+
+        bool has_value = parts.length > 1;
+        bool has_or = parts.length > 2 && parts[2] == OR;
+
+        string key = parts[0];
+        bool[string][string] vals = (parts in metadata_cache);
+        if(vals !is null) {
+            // this was a valid key
+
+
+
+            if(has_value) {
+                value = parts[1];
+                // there is a value given on the path
+                bool[string] dirs = (value in vals);
+                if(dirs !is null) {
+                    // the value existed in the metadata map
+                    // find the 
+
+
+                    if(parts.length == 2) {
+                        // this was the last component
+                    }
+
+                } else {
+                    if(parts.length == 2) {
+                        // the value did not exist and this is
+                        // the last part of the directory path
+                        return [];
+                    }
+                }
+            } else {
+                // FIXME filter out the impossible keys somehow
+                return vals.keys;
+            }
+        }
+        // this was not a valid key
+        throw new FuseException(errno.ENOENT);
+    }
+    */
 
     override void getattr(const(char)[] path, ref stat_t s) {
+        string[] results = get_results(path.split("/"));
+
+        // FIXME ; end dirs need to be symlinks
+        s.st_mode = S_IFDIR | octal!755;
+        s.st_size = 0;
+        return;
+
+        /*
         if (path == "/") {
             s.st_mode = S_IFDIR | octal!755;
             s.st_size = 0;
@@ -64,27 +178,11 @@ class UrchinFS : Operations {
             return;
         }
         throw new FuseException(errno.ENOENT);
+        */
     }
 
     override string[] readdir(const(char)[] path) {
-        // FIXME: check if this can actually ever be null?
-        if (null != path) {
-            if(isValidPath(path)) {
-                const(char)[][] parts = path.split("/");
-                writeln("parts:");
-                writeln(parts);
-                if("" == parts[0]) {
-                    parts = parts[1..parts.length];
-                    if (path == "/") {
-                        return metadata_cache.keys;
-                        //return ["a", "b"];
-                    }
-                } else {
-                    writeln("WAT");
-                }
-            }
-        }
-        throw new FuseException(errno.ENOENT);
+        return get_results(path.split("/"));
     }
 }
 
