@@ -57,9 +57,14 @@ class UrchinFS : Operations {
         parts = parts[cur..parts.length];
 
         int index = 0;
-        string[] keys;
-        string[][] values;
+        string last_key = null;
+        string[][string] state;
         parsed last = parsed.NONE;
+
+        // duplicate all the entries to start with
+        UrchinFSEntry[] found = entries.dup;
+
+
 
         while(index < parts.length) {
             string part = to!string(parts[index]);
@@ -67,7 +72,16 @@ class UrchinFS : Operations {
             if(startsWith(part, FACET_PREFIX) && part != OR) {
                 // this is a key
                 last = parsed.KEY;
-                keys ~= part;
+                last_key = part;
+                // fail on duplicate keys
+
+                string[]* key_values = (part in state);
+                if(key_values !is null) {
+                    stderr.writefln("Duplicate key [%s]", part);
+                    throw new FuseException(errno.ENOENT);
+                }
+
+                state[part] = [];
                 stdout.writefln("key: %s", part);
             } else if (last == parsed.VAL && part == OR) {
                 // this is an or
@@ -77,20 +91,15 @@ class UrchinFS : Operations {
                 // this is a value
                 last = parsed.VAL;
                 stdout.writefln("val: %s", part);
-                if(last == parsed.KEY) {
-                    string[]
-
-                        // HERE
-                    values ~= []
-                } else {
-                    values[
-                }
+                // append a new array to values, containing the current part
+                state[last_key] = state[last_key] ~ part;
             } else {
                 // this must be a dir
                 last = parsed.DIR;
                 stdout.writefln("dir: %s", part);
             }
             index++;
+            stdout.writefln("state: %-(%s -> %s%)", state);
         }
         stdout.writeln("----");
         return [];
