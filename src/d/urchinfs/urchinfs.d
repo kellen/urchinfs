@@ -64,8 +64,6 @@ class UrchinFS : Operations {
         // duplicate all the entries to start with
         UrchinFSEntry[] found = entries.dup;
 
-
-
         while(index < parts.length) {
             string part = to!string(parts[index]);
 
@@ -87,6 +85,11 @@ class UrchinFS : Operations {
                 // this is an or
                 last = parsed.OR;
                 stdout.writefln("OR: %s", part);
+                
+                setUnion()
+                setIntersection()
+                setDifference()
+
             } else if(last == parsed.KEY || last == parsed.OR) {
                 // this is a value
                 last = parsed.VAL;
