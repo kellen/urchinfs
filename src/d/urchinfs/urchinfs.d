@@ -46,6 +46,56 @@ class UrchinFS : Operations {
         years["2012"] = year_dirs_12;
 
         metadata_cache["year"] = years;
+
+        UrchinFSEntry easter = new UrchinFSEntry();
+        easter.display_name = "Easter Parade (1948)";
+        string[][string] easter_md;
+        easter_md["year"] = ["1948"];
+        easter.metadata = easter_md;
+    }
+
+    string[] get_keys(UrchinFSEntry[] entries) {
+        string[] keys = [];
+        foreach(entry; entries) {
+            keys 
+        }
+        return keys;
+    }
+
+    string[] get_listing(UrchinFSEntry[] entries) {
+        string[] result = [];
+        foreach(entry; entries) {
+            result ~= entry.display_name;
+        }
+        return result;
+    }
+
+    UrchinFSEntry[] filter(UrchinFSEntry[] entries, string key, string[] values) {
+        UrchinFSEntry[] result = [];
+        foreach(i, entry; entries) {
+            bool keep = false;
+
+            string[]* key_values_ptr = (key in entry.metadata);
+            if(key_values_ptr !is null) {
+                string[] key_values = *key_values_ptr;
+                foreach(j, val; key_values) {
+                    foreach(value; values) {
+                        if(val == value) {
+                            keep = true;
+                            break;
+                        }
+                    }
+                    if(keep) {
+                        break;
+                    }
+                }
+            }
+
+            if(keep) {
+                result ~= entry;
+            }
+        }
+        return result;
     }
 
     string[] get_results(const(char)[][] parts) {
@@ -65,14 +115,15 @@ class UrchinFS : Operations {
         UrchinFSEntry[] found = entries.dup;
 
         while(index < parts.length) {
+            bool is_last = index == parts.length-1;
             string part = to!string(parts[index]);
 
             if(startsWith(part, FACET_PREFIX) && part != OR) {
                 // this is a key
                 last = parsed.KEY;
                 last_key = part;
-                // fail on duplicate keys
 
+                // fail on duplicate keys
                 string[]* key_values = (part in state);
                 if(key_values !is null) {
                     stderr.writefln("Duplicate key [%s]", part);
@@ -81,25 +132,49 @@ class UrchinFS : Operations {
 
                 state[part] = [];
                 stdout.writefln("key: %s", part);
+
+                if(is_last) {
+                    // return the currrent valid values for this key
+                }
             } else if (last == parsed.VAL && part == OR) {
                 // this is an or
                 last = parsed.OR;
                 stdout.writefln("OR: %s", part);
                 
-                setUnion()
-                setIntersection()
-                setDifference()
+                //setUnion()
+                //setIntersection()
+                //setDifference()
+
+                if(is_last) {
+                    // return the unused values for this key
+                }
 
             } else if(last == parsed.KEY || last == parsed.OR) {
                 // this is a value
                 last = parsed.VAL;
                 stdout.writefln("val: %s", part);
+
                 // append a new array to values, containing the current part
                 state[last_key] = state[last_key] ~ part;
+
+                if(is_last || (!is_last && to!string(parts[index+1]) != OR)) {
+                    // lookahead, and if the next token is not an OR
+                    // filter the entries by the current facet
+                    found = filter(found, last_key, state[last_key]);
+                } 
+
+                if(is_last) {
+                    // return the unused keys, OR, and the matching dirs
+                    get_listing(found);
+                }
             } else {
                 // this must be a dir
                 last = parsed.DIR;
                 stdout.writefln("dir: %s", part);
+
+                if(is_last) {
+                    // this is a symlink... don't use this as a return val???
+                }
             }
             index++;
             stdout.writefln("state: %-(%s -> %s%)", state);
