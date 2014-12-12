@@ -21,10 +21,9 @@ class UrchinFSResult {
 }
 
 class UrchinFS : Operations {
-    // FIXME certain characters are ignored for collation in UTF-8 locales LC_COLLATION
-    static const string FACET_PREFIX = "-";
-    static const string OR = FACET_PREFIX ~ "OR";
-    enum parsed { KEY, VAL, OR, NONE, DIR }
+    static const string AND = "^";
+    static const string OR = "+";
+    enum parsed { KEY, VAL, AND, OR, NONE, DIR }
 
     // { metadata_key -> { metadata_value -> { display_name -> bool } }}
     // the last nested map is a hack due to no set type in dlang
@@ -34,7 +33,7 @@ class UrchinFS : Operations {
     this() {
         // TODO fetch actual data from disk
         UrchinFSEntry easter = new UrchinFSEntry();
-        easter.display_name = "Easter Parade (1948)";
+        easter.display_name = "Easter Parade (1948, color)";
         string[][string] easter_md;
         easter_md["year"] = ["1948"];
         easter_md["color"] = ["color"];
@@ -42,22 +41,28 @@ class UrchinFS : Operations {
         entries ~= easter;
 
         UrchinFSEntry city = new UrchinFSEntry();
-        city.display_name = "The Naked City (1948)";
+        city.display_name = "The Naked City (1948, bw)";
         string[][string] city_md;
         city_md["year"] = ["1948"];
         city_md["color"] = ["black-and-white"];
         city.metadata = city_md;
         entries ~= city;
 
-    }
+        UrchinFSEntry vanish = new UrchinFSEntry();
+        vanish.display_name = "The Lady Vanishes (1938, bw)";
+        string[][string] vanish_md;
+        vanish_md["year"] = ["1938"];
+        vanish_md["color"] = ["black-and-white"];
+        vanish.metadata = vanish_md;
+        entries ~= vanish;
 
-    // prefix all strings with FACET_PREFIX
-    string[] facet_prefix(string[] keys) {
-        string[] ret;
-        foreach(key; keys) {
-            ret ~= (FACET_PREFIX ~ key);
-        }
-        return ret;
+        UrchinFSEntry kiss = new UrchinFSEntry();
+        kiss.display_name = "Kiss Me Deadly (1955, bw)";
+        string[][string] kiss_md;
+        kiss_md["year"] = ["1955"];
+        kiss_md["color"] = ["black-and-white"];
+        kiss.metadata = kiss_md;
+        entries ~= kiss;
     }
 
     // get all of the valid keys for the given entries
@@ -160,95 +165,97 @@ class UrchinFS : Operations {
         }
         parts = parts[cur..parts.length];
 
-        int index = 0;
-        string current_key = null;          // the currently selected key
-        string[] current_key_values = [];   // all of the potential values for this key
-        string[] current_values = [];       // the currently selected values
+        // start with all entries
+        UrchinFSEntry[] found = entries.dup;
 
+        string[] current_valid_keys = get_keys(found);  // the valid keys for the current entries
+        string[] current_valid_values = [];             // the valid values for the current entires + key
+        string current_key = null;                      // the currently selected key
 
         string[][string] state;
         parsed last = parsed.NONE;
 
-        // duplicate all the entries to start with
-        UrchinFSEntry[] found = entries.dup;
-
+        int index = 0;
         while(index < parts.length) {
             bool is_last = index == parts.length-1;
             string part = to!string(parts[index]);
 
-            if(startsWith(part, FACET_PREFIX) && part != OR) {
-                // this is a key
-                last = parsed.KEY;
-                string key = part[FACET_PREFIX.length .. $];
+            if(part == AND) {
+                last = parsed.AND;
+                current_key = null;
+                current_valid_values = [];
 
+                current_valid_keys = setdiff(get_keys(found), state.keys);
+                if(is_last) {
+                    return current_valid_keys;
+                }
+            } else if (last == parsed.AND) {
+                last = parsed.KEY;
+                string key = part;
+
+                // fail on invalid keys 
+                if(!current_valid_keys.canFind(key)) {
+                    stderr.writefln("Invalid key [%s]", key);
+                    throw new FuseException(errno.ENOENT);
+                }
                 // fail on duplicate keys
-                string[]* key_values = (key in state);
-                if(key_values !is null) {
+                if((key in state) !is null) {
                     stderr.writefln("Duplicate key [%s]", key);
                     throw new FuseException(errno.ENOENT);
                 }
 
-                state[key] = [];
-                stdout.writefln("key: %s", key);
-                found = filter(found, key);
-                current_key_values = get_values(found, key);
-
-                if(is_last) {
-                    // return the currrent valid values for this key
-                    stdout.writefln("key ret: %s", current_key_values);
-                    return current_key_values;
-                }
                 current_key = key;
-                current_values = [];
-            } else if (last == parsed.VAL && part == OR) {
-                // this is an or
-                last = parsed.OR;
-                stdout.writefln("OR: %s", part);
-                
+                current_valid_keys = setdiff(current_valid_keys, [key]);
+                state[key] = [];
+                found = filter(found, key);
+
+                current_valid_values = get_values(found, key);
                 if(is_last) {
-                   return setdiff(current_key_values, current_values);
+                    return current_valid_values;
                 }
-
+            } else if (last == parsed.VAL && part == OR) {
+                last = parsed.OR;
+                if(is_last) {
+                    return current_valid_values;
+                }
             } else if(last == parsed.KEY || last == parsed.OR) {
-                // this is a value
                 last = parsed.VAL;
-                stdout.writefln("val: %s", part);
+                string value = part;
 
-                // this value either does not exist at all
-                // or is already selected, so throw an error
-                bool not_found = !current_key_values.canFind(part);
-                bool already_used = current_values.canFind(part);
-                if(not_found || already_used) {
-                    stdout.writefln("current key values: %s", current_key_values);
-                    stdout.writefln("not found? %s already used? %s", not_found, already_used);
+                // fail on not found or already-used values
+                if(!current_valid_values.canFind(value)) {
+                    stderr.writefln("Invalid value [%s]", value);
                     throw new FuseException(errno.ENOENT);
                 }
 
-                current_values ~= part;
+                // update the currently-valid values list
+                current_valid_values = setdiff(current_valid_values, [value]);
 
-                // append a new array to values, containing the current part
-                state[current_key] = state[current_key] ~ part;
+                // append a new array to values, containing the current value
+                state[current_key] = state[current_key] ~ value;
 
-                // lookahead, and if the next token is not an OR
-                // filter the entries by the current facet.
+                // lookahead, and if the next token is _not_ an OR,
+                // filter the entries by the current facet
                 if(is_last || (!is_last && to!string(parts[index+1]) != OR)) {
                     found = filter(found, current_key, state[current_key]);
                 } 
 
                 if(is_last) {
-                    // return the unused keys, OR, and the matching dirs
                     string[] ret = get_listing(found);
-                    stdout.writefln("val ret: %s", current_key_values);
-                    // FIXME
-                    return ret ~ facet_prefix(setdiff(get_keys(found), state.keys)) ~ OR;
+                    // add AND and OR if appropriate
+                    if(current_valid_values.length > 0) {
+                        ret ~= OR;
+                    }
+                    if(current_valid_keys.length > 0) {
+                        ret ~= AND;
+                    }
+                    return ret;
                 }
             } else {
-                // this must be a dir
+                // FIXME this must return something to indicate that it should
+                // FIXME be a symlink
                 last = parsed.DIR;
-                stdout.writefln("dir: %s", part);
-
                 if(is_last) {
-                    // this is a symlink... don't use this as a return val???
                     string[] ret;
                     ret ~= "FIXME";
                     return ret;
@@ -257,10 +264,9 @@ class UrchinFS : Operations {
             index++;
             stdout.writefln("state: %-(%s -> %s%)", state);
         }
+        // FIXME should be a special case for / and any fall-through here should error
         stdout.writeln("----");
-        // FIXME need to return all potential keys, prefixed with FACET_PREFIX
-        // FIXME as well as all entries
-        return get_listing(found) ~ facet_prefix(get_keys(found)) ~ "+" ~ "^";
+        return get_listing(found) ~ AND;
     }
 
     override void getattr(const(char)[] path, ref stat_t s) {
