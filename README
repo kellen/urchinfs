@@ -16,6 +16,75 @@ may contain mp3/flac/ogg files, cover/cd scans, text files, etc. A
 "movie" may contain multiple video files, samples, subtitles, cover
 scans, etc.
 
+Usage
+-----
+
+urchin-fs supports filtering on multiple facets, where the result is
+entries which match all given facets. Facets are nested in a `^` 
+directory, where `^` is the symbol for the 
+[AND](http://en.wikipedia.org/wiki/Logical_conjunction) operation.
+
+```
+$ ls -1 example/
+^
+Easter Parade (1948, color)
+Kiss Me Deadly (1955, bw)
+The Lady Vanishes (1938, bw)
+The Naked City (1948, bw)
+$ ls -1 example/^/
+color
+year
+$ ls -1 example/^/year/1948/
+^
++
+Easter Parade (1948, color)
+The Naked City (1948, bw)
+$ ls -1 example/^/year/1948/^/color/bw/
+^
++
+Easter Parade (1948, color)
+The Naked City (1948, bw)
+
+```
+
+Each facet can be specified with multiple values, where the results
+have one of these values. Values are nested in a `+` directory,
+where `+` is the symbol for the 
+[OR](http://en.wikipedia.org/wiki/Logical_disjunction) operation.
+(`v` was not used since it would be sorted as a letter, `∨` was not
+used since it cannot easily be typed on an average keyboard, and `|`
+was not used since it has special meaning on the command line).
+
+```
+$ ls -1 example/
+^
+Easter Parade (1948, color)
+Kiss Me Deadly (1955, bw)
+The Lady Vanishes (1938, bw)
+The Naked City (1948, bw)
+$ ls -1 example/^/year/
+1938
+1948
+1955
+$ ls -1 example/^/year/1948/
+^
++
+Easter Parade (1948, color)
+The Naked City (1948, bw)
+$ ls -1 example/^/year/1948/+/1955/
+^
++
+Easter Parade (1948, color)
+Kiss Me Deadly (1955, bw)
+The Naked City (1948, bw)
+```
+
+Originally, urchin-fs prefixed its facets with `+` and used `+OR` for 
+providing additional values, but 
+[UTF-8 collation rules](http://unicode.org/reports/tr10/#Multi_Level_Comparison) 
+ignore punctuation in the first sorting stage, which resulted in the 
+facets being mixed in with the directory listings.
+
 Prerequisites
 -------------
 
@@ -40,4 +109,3 @@ sudo apt-get install \
      fuse libfuse2 libfuse-dev \
      dmd-bin
 ```
-
