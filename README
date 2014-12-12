@@ -51,9 +51,10 @@ Each facet can be specified with multiple values, where the results
 have one of these values. Values are nested in a `+` directory,
 where `+` is the symbol for the 
 [OR](http://en.wikipedia.org/wiki/Logical_disjunction) operation.
-(`v` was not used since it would be sorted as a letter, `∨` (vel) was 
-not used since it cannot easily be typed on an average keyboard, and 
-`|` was not used since it has special meaning on the command line).
+(`v` was not used since it would be sorted as a letter, `∨` 
+([vel](http://en.wikipedia.org/wiki/Vel_%28symbol%29)) was not used 
+since it cannot easily be typed on an average keyboard, and `|` was 
+not used since it has special meaning on the command line).
 
 ```
 $ ls -1 example/
