@@ -9,20 +9,21 @@ class UrchinFSEntry {
 }
 
 class UrchinFSResult {
-    string[] keys;
-    UrchinFSEntry[] entries;
-    string[] listing;
+    string name;
+    int mode;
+    int size = 0;
 
-    this(string[] keys, UrchinFSEntry[] entries) {
-        this.keys = keys;
-        this.entries = entries;
-        this.listing = [];
+    this(string name, int mode) immutable {
+        this.name = name;
+        this.mode = mode;
     }
 }
 
 class UrchinFS : Operations {
     static const string AND = "^";
+    static immutable UrchinFSResult AND_DIR = new immutable UrchinFSResult("^", S_IFDIR | octal!755);
     static const string OR = "+";
+    static immutable UrchinFSResult OR_DIR = new immutable UrchinFSResult("+", S_IFDIR | octal!755);
     enum parsed { KEY, VAL, AND, OR, NONE, DIR }
 
     // { metadata_key -> { metadata_value -> { display_name -> bool } }}
@@ -92,12 +93,22 @@ class UrchinFS : Operations {
     }
 
     // get all of the display names for the given entries
-    string[] get_listing(UrchinFSEntry[] entries) {
-        string[] result;
+    immutable(UrchinFSResult)[] get_listing(UrchinFSEntry[] entries) {
+        immutable(UrchinFSResult)[] result;
         foreach(entry; entries) {
-            result ~= entry.display_name;
+            // FIXME ; end dirs need to be symlinks
+            result ~= new immutable UrchinFSResult(entry.display_name, S_IFDIR | octal!755);
         }
         return result;
+    }
+
+    // get all the listings from the given result
+    string[] get_listing(immutable(UrchinFSResult)[] results) {
+        string[] listing;
+        foreach(result; results) {
+            listing ~= result.name;
+        }
+        return listing;
     }
 
     // fitler the entries which have the given key
@@ -155,23 +166,39 @@ class UrchinFS : Operations {
         return map.keys;
     }
 
+    immutable(UrchinFSResult)[] to_result(string[] listing) {
+        immutable(UrchinFSResult)[] result;
+        foreach(entry; listing) {
+            result ~= new immutable UrchinFSResult(entry, S_IFDIR | octal!755);
+        }
+        return result;
+    }
+
     // for a split path parts, find the entries matching the specified key-value combinations
     // and return the appropriate directory listing
-    string[] get_results(const(char)[][] parts) {
+    immutable(UrchinFSResult)[] get_results(const(char)[][] parts) {
         // strip off any empty leading sections of the path
         int cur = 0;
         while(cur < parts.length && parts[cur].empty) {
             cur++;
         }
         parts = parts[cur..parts.length];
+        stdout.writefln("parts: %s", parts);
 
         // start with all entries
         UrchinFSEntry[] found = entries.dup;
+
+        // root dir
+        if(parts.length == 0) {
+            return get_listing(found) ~ AND_DIR;
+        }
 
         string[] current_valid_keys = get_keys(found);  // the valid keys for the current entries
         string[] current_valid_values = [];             // the valid values for the current entires + key
         string current_key = null;                      // the currently selected key
 
+        // FIXME see if state can be simplified/ignored
+        // FIXME see if we can cache anything
         string[][string] state;
         parsed last = parsed.NONE;
 
@@ -187,7 +214,7 @@ class UrchinFS : Operations {
 
                 current_valid_keys = setdiff(get_keys(found), state.keys);
                 if(is_last) {
-                    return current_valid_keys;
+                    return to_result(current_valid_keys);
                 }
             } else if (last == parsed.AND) {
                 last = parsed.KEY;
@@ -211,12 +238,12 @@ class UrchinFS : Operations {
 
                 current_valid_values = get_values(found, key);
                 if(is_last) {
-                    return current_valid_values;
+                    return to_result(current_valid_values);
                 }
             } else if (last == parsed.VAL && part == OR) {
                 last = parsed.OR;
                 if(is_last) {
-                    return current_valid_values;
+                    return to_result(current_valid_values);
                 }
             } else if(last == parsed.KEY || last == parsed.OR) {
                 last = parsed.VAL;
@@ -241,13 +268,13 @@ class UrchinFS : Operations {
                 } 
 
                 if(is_last) {
-                    string[] ret = get_listing(found);
+                    immutable(UrchinFSResult)[] ret = get_listing(found);
                     // add AND and OR if appropriate
                     if(current_valid_values.length > 0) {
-                        ret ~= OR;
+                        ret ~= OR_DIR;
                     }
                     if(current_valid_keys.length > 0) {
-                        ret ~= AND;
+                        ret ~= AND_DIR;
                     }
                     return ret;
                 }
@@ -256,44 +283,28 @@ class UrchinFS : Operations {
                 // FIXME be a symlink
                 last = parsed.DIR;
                 if(is_last) {
-                    string[] ret;
-                    ret ~= "FIXME";
+                    immutable(UrchinFSResult)[] ret;
+                    ret ~= new immutable UrchinFSResult("FIXME", S_IFDIR | octal!755);
                     return ret;
                 }
             }
             index++;
             stdout.writefln("state: %-(%s -> %s%)", state);
         }
-        // FIXME should be a special case for / and any fall-through here should error
-        stdout.writeln("----");
-        return get_listing(found) ~ AND;
+        throw new FuseException(errno.ENOENT);
     }
 
     override void getattr(const(char)[] path, ref stat_t s) {
-        string[] results = get_results(path.split("/"));
-
+        // FIXME add current dir "." to get_results
+        immutable(UrchinFSResult)[] results = get_results(path.split("/"));
         // FIXME ; end dirs need to be symlinks
         s.st_mode = S_IFDIR | octal!755;
         s.st_size = 0;
         return;
-
-        /*
-        if (path == "/") {
-            s.st_mode = S_IFDIR | octal!755;
-            s.st_size = 0;
-            return;
-        }
-        if (path.among("/a", "/b")) {
-            s.st_mode = S_IFREG | octal!644;
-            s.st_size = 42;
-            return;
-        }
-        throw new FuseException(errno.ENOENT);
-        */
     }
 
     override string[] readdir(const(char)[] path) {
-        return get_results(path.split("/"));
+        return get_listing(get_results(path.split("/")));
     }
 }
 
