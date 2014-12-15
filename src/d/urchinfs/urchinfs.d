@@ -20,10 +20,18 @@ class UrchinFSResult {
 }
 
 class UrchinFS : Operations {
+    static const int MODE_DIR = S_IFDIR | octal!755;
+    static const int MODE_SYM = S_IFLNK | octal!777;
+
     static const string AND = "^";
-    static immutable UrchinFSResult AND_DIR = new immutable UrchinFSResult("^", S_IFDIR | octal!755);
     static const string OR = "+";
-    static immutable UrchinFSResult OR_DIR = new immutable UrchinFSResult("+", S_IFDIR | octal!755);
+
+    static immutable UrchinFSResult AND_DIR = new immutable UrchinFSResult("^", MODE_DIR);
+    static immutable UrchinFSResult OR_DIR = new immutable UrchinFSResult("+", MODE_DIR);
+
+    static immutable UrchinFSResult CUR_DIR = new immutable UrchinFSResult(".", MODE_DIR);
+    static immutable UrchinFSResult CUR_SYM = new immutable UrchinFSResult(".", MODE_SYM);
+
     enum parsed { KEY, VAL, AND, OR, NONE, DIR }
 
     // { metadata_key -> { metadata_value -> { display_name -> bool } }}
@@ -97,7 +105,7 @@ class UrchinFS : Operations {
         immutable(UrchinFSResult)[] result;
         foreach(entry; entries) {
             // FIXME ; end dirs need to be symlinks
-            result ~= new immutable UrchinFSResult(entry.display_name, S_IFDIR | octal!755);
+            result ~= new immutable UrchinFSResult(entry.display_name, MODE_SYM);
         }
         return result;
     }
@@ -169,9 +177,18 @@ class UrchinFS : Operations {
     immutable(UrchinFSResult)[] to_result(string[] listing) {
         immutable(UrchinFSResult)[] result;
         foreach(entry; listing) {
-            result ~= new immutable UrchinFSResult(entry, S_IFDIR | octal!755);
+            result ~= new immutable UrchinFSResult(entry, MODE_DIR);
         }
         return result;
+    }
+
+    immutable(UrchinFSResult) get_cur(immutable(UrchinFSResult)[] results) {
+        foreach(result; results) {
+            if(result.name == ".") {
+                return result;
+            }
+        }
+        return null;
     }
 
     // for a split path parts, find the entries matching the specified key-value combinations
@@ -186,11 +203,16 @@ class UrchinFS : Operations {
         stdout.writefln("parts: %s", parts);
 
         // start with all entries
+        // the entire set of entires must be walked for each query in order to accurately 
+        // determine if a directory does or does not exist.
+        // FIXME we may wish to reimplement this walking functionality for getattr so 
+        // FIXME we're not temporarily creating a big array of objects only to throw most
+        // FIXME of them away when looking for "."
         UrchinFSEntry[] found = entries.dup;
 
         // root dir
         if(parts.length == 0) {
-            return get_listing(found) ~ AND_DIR;
+            return get_listing(found) ~ AND_DIR ~ CUR_DIR;
         }
 
         string[] current_valid_keys = get_keys(found);  // the valid keys for the current entries
@@ -214,7 +236,7 @@ class UrchinFS : Operations {
 
                 current_valid_keys = setdiff(get_keys(found), state.keys);
                 if(is_last) {
-                    return to_result(current_valid_keys);
+                    return to_result(current_valid_keys) ~ CUR_DIR;
                 }
             } else if (last == parsed.AND) {
                 last = parsed.KEY;
@@ -238,12 +260,12 @@ class UrchinFS : Operations {
 
                 current_valid_values = get_values(found, key);
                 if(is_last) {
-                    return to_result(current_valid_values);
+                    return to_result(current_valid_values) ~ CUR_DIR;
                 }
             } else if (last == parsed.VAL && part == OR) {
                 last = parsed.OR;
                 if(is_last) {
-                    return to_result(current_valid_values);
+                    return to_result(current_valid_values) ~ CUR_DIR;
                 }
             } else if(last == parsed.KEY || last == parsed.OR) {
                 last = parsed.VAL;
@@ -276,15 +298,13 @@ class UrchinFS : Operations {
                     if(current_valid_keys.length > 0) {
                         ret ~= AND_DIR;
                     }
-                    return ret;
+                    return ret ~ CUR_DIR;
                 }
             } else {
-                // FIXME this must return something to indicate that it should
-                // FIXME be a symlink
                 last = parsed.DIR;
                 if(is_last) {
                     immutable(UrchinFSResult)[] ret;
-                    ret ~= new immutable UrchinFSResult("FIXME", S_IFDIR | octal!755);
+                    ret ~= CUR_SYM;
                     return ret;
                 }
             }
@@ -295,12 +315,14 @@ class UrchinFS : Operations {
     }
 
     override void getattr(const(char)[] path, ref stat_t s) {
-        // FIXME add current dir "." to get_results
-        immutable(UrchinFSResult)[] results = get_results(path.split("/"));
-        // FIXME ; end dirs need to be symlinks
-        s.st_mode = S_IFDIR | octal!755;
-        s.st_size = 0;
-        return;
+        immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
+        if(null !is result) {
+            s.st_mode = result.mode;
+            // FIXME st_size should be something... ? 
+            s.st_size = 0;
+            return;
+        }
+        throw new FuseException(errno.ENOENT);
     }
 
     override string[] readdir(const(char)[] path) {
