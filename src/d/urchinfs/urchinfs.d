@@ -1,6 +1,7 @@
 import dfuse.fuse;
 import std.algorithm, std.conv, std.stdio, std.string;
 import std.path, std.array;
+import std.datetime;
 
 static const int MODE_DIR = S_IFDIR | octal!755;
 static const int MODE_SYM = S_IFLNK | octal!777;
@@ -53,6 +54,11 @@ class UrchinFS : Operations {
     // the last nested map is a hack due to no set type in dlang
 
     UrchinFSEntry[] entries;
+    time_t mounttime = 0;
+    
+    override void initialize() {
+        mounttime = Clock.currTime().toUnixTime();
+    }
 
     this() {
         // TODO fetch actual data from disk
@@ -344,9 +350,9 @@ class UrchinFS : Operations {
             s.st_ino = 0;
             s.st_dev = 0;
             // really old?
-            s.st_atime = 1000;
-            s.st_mtime = 1000;
-            s.st_ctime = 1000;
+            s.st_atime = mounttime;
+            s.st_mtime = mounttime;
+            s.st_ctime = mounttime;
 
             stdout.writefln("\t-> OK: {mode: %o, size: %d}", result.mode, result.size);
             return;
