@@ -2,35 +2,50 @@ import dfuse.fuse;
 import std.algorithm, std.conv, std.stdio, std.string;
 import std.path, std.array;
 
+static const int MODE_DIR = S_IFDIR | octal!755;
+static const int MODE_SYM = S_IFLNK | octal!777;
+static const int W_OK = 2;
+static const int DIRSIZE = 4096;
+
 class UrchinFSEntry {
-    string display_name;
-    string[] metadata_sources;
+    string display_name = null;
+    string destination = "/";
+    string[] metadata_sources = [];
     string[][string] metadata;
 }
 
 class UrchinFSResult {
-    string name;
-    int mode;
+    string name = null;
+    int mode = 0;
     int size = 0;
+    string destination = null;
 
-    this(string name, int mode) immutable {
+    this(string name) immutable {
         this.name = name;
-        this.mode = mode;
+        this.mode = MODE_DIR;
+        this.size = DIRSIZE;
+    }
+
+    this(string name, string destination) immutable {
+        this.name = name;
+        this.destination = destination;
+        this.mode = MODE_SYM;
+        // "The size of a symbolic link is the length of the 
+        // pathname it contains, without a terminating null byte."
+        this.size = to!int(name.length);
     }
 }
 
 class UrchinFS : Operations {
-    static const int MODE_DIR = S_IFDIR | octal!755;
-    static const int MODE_SYM = S_IFLNK | octal!777;
 
     static const string AND = "^";
     static const string OR = "+";
 
-    static immutable UrchinFSResult AND_DIR = new immutable UrchinFSResult("^", MODE_DIR);
-    static immutable UrchinFSResult OR_DIR = new immutable UrchinFSResult("+", MODE_DIR);
+    static immutable UrchinFSResult AND_DIR = new immutable UrchinFSResult("^");
+    static immutable UrchinFSResult OR_DIR = new immutable UrchinFSResult("+");
 
-    static immutable UrchinFSResult CUR_DIR = new immutable UrchinFSResult(".", MODE_DIR);
-    static immutable UrchinFSResult CUR_SYM = new immutable UrchinFSResult(".", MODE_SYM);
+    static immutable UrchinFSResult CUR_DIR = new immutable UrchinFSResult(".");
+    static immutable UrchinFSResult CUR_SYM = new immutable UrchinFSResult(".", "/");
 
     enum parsed { KEY, VAL, AND, OR, NONE, DIR }
 
@@ -104,8 +119,7 @@ class UrchinFS : Operations {
     immutable(UrchinFSResult)[] get_listing(UrchinFSEntry[] entries) {
         immutable(UrchinFSResult)[] result;
         foreach(entry; entries) {
-            // FIXME ; end dirs need to be symlinks
-            result ~= new immutable UrchinFSResult(entry.display_name, MODE_SYM);
+            result ~= new immutable UrchinFSResult(entry.display_name, entry.destination);
         }
         return result;
     }
@@ -177,7 +191,7 @@ class UrchinFS : Operations {
     immutable(UrchinFSResult)[] to_result(string[] listing) {
         immutable(UrchinFSResult)[] result;
         foreach(entry; listing) {
-            result ~= new immutable UrchinFSResult(entry, MODE_DIR);
+            result ~= new immutable UrchinFSResult(entry);
         }
         return result;
     }
@@ -200,7 +214,7 @@ class UrchinFS : Operations {
             cur++;
         }
         parts = parts[cur..parts.length];
-        stdout.writefln("parts: %s", parts);
+        //stdout.writefln("parts: %s", parts);
 
         // start with all entries
         // the entire set of entires must be walked for each query in order to accurately 
@@ -302,6 +316,7 @@ class UrchinFS : Operations {
                 }
             } else {
                 last = parsed.DIR;
+                // FIXME WTF?
                 if(is_last) {
                     immutable(UrchinFSResult)[] ret;
                     ret ~= CUR_SYM;
@@ -311,23 +326,75 @@ class UrchinFS : Operations {
             index++;
             stdout.writefln("state: %-(%s -> %s%)", state);
         }
+        stdout.writeln("WUT");
         throw new FuseException(errno.ENOENT);
     }
 
     override void getattr(const(char)[] path, ref stat_t s) {
-        immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
+        stdout.writefln("getattr: %s", path);
+        immutable(UrchinFSResult)[] results = get_results(path.split("/"));
+        immutable(UrchinFSResult) result = get_cur(results);
         if(null !is result) {
             s.st_mode = result.mode;
-            // FIXME st_size should be something... ? 
-            s.st_size = 0;
+            s.st_size = result.size;
+            // FIXME 
+            s.st_nlink = 7;  // 2 + number of dirs
+            s.st_gid = 1000; // kellen = 1000
+            s.st_uid = 1000; // kellen = 1000
+            s.st_ino = 0;
+            s.st_dev = 0;
+            // really old?
+            s.st_atime = 1000;
+            s.st_mtime = 1000;
+            s.st_ctime = 1000;
+
+            stdout.writefln("\t-> OK: {mode: %o, size: %d}", result.mode, result.size);
             return;
         }
+        stdout.writefln("\t-> ERROR: %d", errno.ENOENT);
         throw new FuseException(errno.ENOENT);
     }
 
     override string[] readdir(const(char)[] path) {
+        stdout.writefln("readdir: %s", path);
         return get_listing(get_results(path.split("/")));
     }
+
+    override ulong readlink(const(char)[] path, ubyte[] buf) {
+        stdout.writefln("readlink: %s", path);
+        immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
+        if(null !is result) {
+            ubyte[] dest = cast(ubyte[])result.destination;
+            for (int i = 0; i < dest.length; i++) {
+                buf[i] = dest[i];
+            }
+            return (cast(ubyte[])result.destination).length;
+        }
+        stderr.writeln("readlink ERROR no result");
+        throw new FuseException(errno.ENOENT);
+    }
+
+    override bool access(const(char)[] path, int mode) {
+        stdout.writefln("access: %s (mode %s)", path, mode);
+        immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
+        if(null !is result) {
+            stdout.writefln(
+                    "\t-> result:{name:%s, mode:%o, size:%d, destination:%s}", 
+                    result.name, result.mode, result.size, result.destination
+                    );
+            stdout.writefln("\t-> write? %b", (mode & W_OK) == W_OK);
+            if((mode & W_OK) == W_OK) {
+                // write not supported
+                stderr.writeln("access ERROR wants to write");
+                throw new FuseException(errno.EACCES);
+            }
+            stdout.writefln("\t-> return: true");
+            return true;
+        }
+        stderr.writeln("access RROR no result");
+        throw new FuseException(errno.ENOENT);
+    }
+
 }
 
 int main(string[] args) {

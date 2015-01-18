@@ -217,6 +217,7 @@ export class Operations
      */
     void getattr(const(char)[] path, ref stat_t stat)
     {
+        stderr.writeln("getattr");
         throw new FuseException(errno.EOPNOTSUPP);
     }
 
@@ -231,6 +232,7 @@ export class Operations
      */
     ulong read(const(char)[] path, ubyte[] buf, ulong offset)
     {
+        stderr.writeln("read");
         throw new FuseException(errno.EOPNOTSUPP);
     }
 
@@ -245,6 +247,7 @@ export class Operations
      */
     int write(const(char)[] path, in ubyte[] data, ulong offset)
     {
+        stderr.writeln("write");
         throw new FuseException(errno.EOPNOTSUPP);
     }
 
@@ -256,6 +259,7 @@ export class Operations
      */
     void truncate(const(char)[] path, ulong length)
     {
+        stderr.writeln("truncate");
         throw new FuseException(errno.EOPNOTSUPP);
     }
 
@@ -269,6 +273,7 @@ export class Operations
      */
     string[] readdir(const(char)[] path)
     {
+        stderr.writeln("readdir");
         throw new FuseException(errno.EOPNOTSUPP);
     }
 
@@ -280,6 +285,7 @@ export class Operations
      */
     ulong readlink(const(char)[] path, ubyte[] buf)
     {
+        stderr.writeln("readlink");
         throw new FuseException(errno.EOPNOTSUPP);
     }
 
@@ -294,6 +300,7 @@ export class Operations
      */
     bool access(const(char)[] path, int mode)
     {
+        stderr.writeln("access");
         throw new FuseException(errno.EOPNOTSUPP);
     }
 
