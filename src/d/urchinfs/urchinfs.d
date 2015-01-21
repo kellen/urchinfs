@@ -5,6 +5,7 @@ import std.datetime;
 import core.sys.posix.sys.types;
 import core.sys.posix.unistd;
 
+static const int DEBUG = false;
 static const int MODE_DIR = S_IFDIR | octal!755;
 static const int MODE_SYM = S_IFLNK | octal!777;
 static const int W_OK = 2;
@@ -99,6 +100,24 @@ class UrchinFS : Operations {
         kiss_md["color"] = ["black-and-white"];
         kiss.metadata = kiss_md;
         entries ~= kiss;
+    }
+
+    void log(string msg) {
+        if(DEBUG) {
+            stdout.writeln(msg);
+        }
+    }
+
+    void logf(string, A...)(string msg, A args) {
+        if(DEBUG) {
+            stdout.writefln(msg, args);
+        }
+    }
+
+    void error(string, A...)(string msg, A args) {
+        if(DEBUG) {
+            stderr.writefln(msg, args);
+        }
     }
 
     // get all of the valid keys for the given entries
@@ -226,7 +245,6 @@ class UrchinFS : Operations {
             cur++;
         }
         parts = parts[cur..parts.length];
-        //stdout.writefln("parts: %s", parts);
 
         // start with all entries
         // the entire set of entires must be walked for each query in order to accurately 
@@ -270,12 +288,12 @@ class UrchinFS : Operations {
 
                 // fail on invalid keys 
                 if(!current_valid_keys.canFind(key)) {
-                    stderr.writefln("Invalid key [%s]", key);
+                    error("Invalid key [%s]", key);
                     throw new FuseException(errno.ENOENT);
                 }
                 // fail on duplicate keys
                 if((key in state) !is null) {
-                    stderr.writefln("Duplicate key [%s]", key);
+                    error("Duplicate key [%s]", key);
                     throw new FuseException(errno.ENOENT);
                 }
 
@@ -299,7 +317,7 @@ class UrchinFS : Operations {
 
                 // fail on not found or already-used values
                 if(!current_valid_values.canFind(value)) {
-                    stderr.writefln("Invalid value [%s]", value);
+                    error("Invalid value [%s]", value);
                     throw new FuseException(errno.ENOENT);
                 }
 
@@ -328,22 +346,23 @@ class UrchinFS : Operations {
                 }
             } else {
                 last = parsed.DIR;
-                // FIXME WTF?
+                // a "normal directory", i.e. something somewhere else on disk
+                // if this isn't the last component in the path, error out
                 if(is_last) {
+                    // no contents to return; just return a symlink for "."
                     immutable(UrchinFSResult)[] ret;
                     ret ~= CUR_SYM;
                     return ret;
                 }
             }
             index++;
-            stdout.writefln("state: %-(%s -> %s%)", state);
+            logf("state: %-(%s -> %s%)", state);
         }
-        stdout.writeln("WUT");
         throw new FuseException(errno.ENOENT);
     }
 
     override void getattr(const(char)[] path, ref stat_t s) {
-        stdout.writefln("getattr: %s", path);
+        logf("getattr: %s", path);
         immutable(UrchinFSResult)[] results = get_results(path.split("/"));
         immutable(UrchinFSResult) result = get_cur(results);
         if(null !is result) {
@@ -362,20 +381,20 @@ class UrchinFS : Operations {
             s.st_ino = 0;
             s.st_dev = 0;
 
-            stdout.writefln("\t-> OK: {mode: %o, size: %d}", result.mode, result.size);
+            logf("\t-> OK: {mode: %o, size: %d}", result.mode, result.size);
             return;
         }
-        stdout.writefln("\t-> ERROR: %d", errno.ENOENT);
+        logf("\t-> ERROR: %d", errno.ENOENT);
         throw new FuseException(errno.ENOENT);
     }
 
     override string[] readdir(const(char)[] path) {
-        stdout.writefln("readdir: %s", path);
+        logf("readdir: %s", path);
         return get_listing(get_results(path.split("/")));
     }
 
     override ulong readlink(const(char)[] path, ubyte[] buf) {
-        stdout.writefln("readlink: %s", path);
+        logf("readlink: %s", path);
         immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
         if(null !is result) {
             ubyte[] dest = cast(ubyte[])result.destination;
@@ -384,28 +403,28 @@ class UrchinFS : Operations {
             }
             return (cast(ubyte[])result.destination).length;
         }
-        stderr.writeln("readlink ERROR no result");
+        error("readlink ERROR no result");
         throw new FuseException(errno.ENOENT);
     }
 
     override bool access(const(char)[] path, int mode) {
-        stdout.writefln("access: %s (mode %s)", path, mode);
+        logf("access: %s (mode %s)", path, mode);
         immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
         if(null !is result) {
-            stdout.writefln(
+            logf(
                     "\t-> result:{name:%s, mode:%o, size:%d, destination:%s}", 
                     result.name, result.mode, result.size, result.destination
                     );
-            stdout.writefln("\t-> write? %b", (mode & W_OK) == W_OK);
+            logf("\t-> write? %b", (mode & W_OK) == W_OK);
             if((mode & W_OK) == W_OK) {
                 // write not supported
-                stderr.writeln("access ERROR wants to write");
+                error("access ERROR wants to write");
                 throw new FuseException(errno.EACCES);
             }
-            stdout.writefln("\t-> return: true");
+            logf("\t-> return: true");
             return true;
         }
-        stderr.writeln("access RROR no result");
+        error("access ERROR no result");
         throw new FuseException(errno.ENOENT);
     }
 
@@ -416,7 +435,9 @@ int main(string[] args) {
         stderr.writeln("urchinfs <MOUNTPOINT>");
         return -1;
     }
-    stdout.writeln("mounting urchinfs");
+    if(DEBUG) {
+        stdout.writeln("mounting urchinfs");
+    }
 
     auto fs = new Fuse("UrchinFS", true, false);
     fs.mount(new UrchinFS(), args[1], []);
