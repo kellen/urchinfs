@@ -2,6 +2,8 @@ import dfuse.fuse;
 import std.algorithm, std.conv, std.stdio, std.string;
 import std.path, std.array;
 import std.datetime;
+import core.sys.posix.sys.types;
+import core.sys.posix.unistd;
 
 static const int MODE_DIR = S_IFDIR | octal!755;
 static const int MODE_SYM = S_IFLNK | octal!777;
@@ -54,10 +56,14 @@ class UrchinFS : Operations {
     // the last nested map is a hack due to no set type in dlang
 
     UrchinFSEntry[] entries;
-    time_t mounttime = 0;
+    time_t mount_time = 0;
+    uid_t mount_uid;
+    gid_t mount_gid;
     
     override void initialize() {
-        mounttime = Clock.currTime().toUnixTime();
+        mount_time = Clock.currTime().toUnixTime();
+        mount_gid = getgid(); 
+        mount_uid = getuid();
     }
 
     this() {
@@ -343,16 +349,18 @@ class UrchinFS : Operations {
         if(null !is result) {
             s.st_mode = result.mode;
             s.st_size = result.size;
-            // FIXME 
-            s.st_nlink = 2 + (results.length - 1);  // 2 + number of dirs
-            s.st_gid = 1000; // kellen = 1000
-            s.st_uid = 1000; // kellen = 1000
+            s.st_nlink = 2 + (results.length - 1);  // 2 + number of dirs - 1 "." entry
+
+            s.st_gid = mount_gid;
+            s.st_uid = mount_uid;
+
+            s.st_atime = mount_time;
+            s.st_mtime = mount_time;
+            s.st_ctime = mount_time;
+
+            // supposedly ignored
             s.st_ino = 0;
             s.st_dev = 0;
-            // really old?
-            s.st_atime = mounttime;
-            s.st_mtime = mounttime;
-            s.st_ctime = mounttime;
 
             stdout.writefln("\t-> OK: {mode: %o, size: %d}", result.mode, result.size);
             return;
