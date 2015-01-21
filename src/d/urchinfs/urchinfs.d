@@ -344,7 +344,7 @@ class UrchinFS : Operations {
             s.st_mode = result.mode;
             s.st_size = result.size;
             // FIXME 
-            s.st_nlink = 7;  // 2 + number of dirs
+            s.st_nlink = 2 + (results.length - 1);  // 2 + number of dirs
             s.st_gid = 1000; // kellen = 1000
             s.st_uid = 1000; // kellen = 1000
             s.st_ino = 0;
