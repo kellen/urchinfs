@@ -102,13 +102,7 @@ class UrchinFS : Operations {
         entries ~= kiss;
     }
 
-    void log(string msg) {
-        if(DEBUG) {
-            stdout.writeln(msg);
-        }
-    }
-
-    void logf(string, A...)(string msg, A args) {
+    void log(string, A...)(string msg, A args) {
         if(DEBUG) {
             stdout.writefln(msg, args);
         }
@@ -356,13 +350,13 @@ class UrchinFS : Operations {
                 }
             }
             index++;
-            logf("state: %-(%s -> %s%)", state);
+            log("state: %-(%s -> %s%)", state);
         }
         throw new FuseException(errno.ENOENT);
     }
 
     override void getattr(const(char)[] path, ref stat_t s) {
-        logf("getattr: %s", path);
+        log("getattr: %s", path);
         immutable(UrchinFSResult)[] results = get_results(path.split("/"));
         immutable(UrchinFSResult) result = get_cur(results);
         if(null !is result) {
@@ -381,20 +375,20 @@ class UrchinFS : Operations {
             s.st_ino = 0;
             s.st_dev = 0;
 
-            logf("\t-> OK: {mode: %o, size: %d}", result.mode, result.size);
+            log("\t-> OK: {mode: %o, size: %d}", result.mode, result.size);
             return;
         }
-        logf("\t-> ERROR: %d", errno.ENOENT);
+        log("\t-> ERROR: %d", errno.ENOENT);
         throw new FuseException(errno.ENOENT);
     }
 
     override string[] readdir(const(char)[] path) {
-        logf("readdir: %s", path);
+        log("readdir: %s", path);
         return get_listing(get_results(path.split("/")));
     }
 
     override ulong readlink(const(char)[] path, ubyte[] buf) {
-        logf("readlink: %s", path);
+        log("readlink: %s", path);
         immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
         if(null !is result) {
             ubyte[] dest = cast(ubyte[])result.destination;
@@ -408,20 +402,20 @@ class UrchinFS : Operations {
     }
 
     override bool access(const(char)[] path, int mode) {
-        logf("access: %s (mode %s)", path, mode);
+        log("access: %s (mode %s)", path, mode);
         immutable(UrchinFSResult) result = get_cur(get_results(path.split("/")));
         if(null !is result) {
-            logf(
+            log(
                     "\t-> result:{name:%s, mode:%o, size:%d, destination:%s}", 
                     result.name, result.mode, result.size, result.destination
                     );
-            logf("\t-> write? %b", (mode & W_OK) == W_OK);
+            log("\t-> write? %b", (mode & W_OK) == W_OK);
             if((mode & W_OK) == W_OK) {
                 // write not supported
                 error("access ERROR wants to write");
                 throw new FuseException(errno.EACCES);
             }
-            logf("\t-> return: true");
+            log("\t-> return: true");
             return true;
         }
         error("access ERROR no result");
