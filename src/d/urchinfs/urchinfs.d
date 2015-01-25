@@ -60,7 +60,7 @@ class UrchinFS : Operations {
     time_t mount_time = 0;
     uid_t mount_uid;
     gid_t mount_gid;
-    
+
     override void initialize() {
         mount_time = Clock.currTime().toUnixTime();
         mount_gid = getgid(); 
@@ -343,6 +343,12 @@ class UrchinFS : Operations {
                 // a "normal directory", i.e. something somewhere else on disk
                 // if this isn't the last component in the path, error out
                 if(is_last) {
+                    // check that the specified dir actually exists
+                    string value = part;
+                    if(!current_valid_values.canFind(value)) {
+                        error("Invalid value [%s]", value);
+                        throw new FuseException(errno.ENOENT);
+                    }
                     // no contents to return; just return a symlink for "."
                     immutable(UrchinFSResult)[] ret;
                     ret ~= CUR_SYM;
@@ -408,7 +414,7 @@ class UrchinFS : Operations {
             log(
                     "\t-> result:{name:%s, mode:%o, size:%d, destination:%s}", 
                     result.name, result.mode, result.size, result.destination
-                    );
+               );
             log("\t-> write? %b", (mode & W_OK) == W_OK);
             if((mode & W_OK) == W_OK) {
                 // write not supported
