@@ -4,6 +4,7 @@ import std.path, std.array;
 import std.datetime;
 import core.sys.posix.sys.types;
 import core.sys.posix.unistd;
+import inotify;
 
 static const int DEBUG = false;
 static const int MODE_DIR = S_IFDIR | octal!755;
