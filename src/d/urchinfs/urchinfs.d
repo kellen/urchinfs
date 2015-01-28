@@ -4,13 +4,39 @@ import std.path, std.array;
 import std.datetime;
 import core.sys.posix.sys.types;
 import core.sys.posix.unistd;
-import inotify;
+import core.sys.posix.sys.inotify;
 
 static const int DEBUG = false;
 static const int MODE_DIR = S_IFDIR | octal!755;
 static const int MODE_SYM = S_IFLNK | octal!777;
 static const int W_OK = 2;
 static const int DIRSIZE = 4096;
+
+/*
+ * Potential command line 
+ * urchinfs /media
+        -source /movies 
+            -type FilesystemSource                  // implicit -> this is a filesystem datasource
+            -pattern "metadata.json"                // implicit -> looks for files named "metadata.json"
+            -extractor GenericMetadataExtractor     // implicit -> parses first-level JSON key-value pairs
+            -formatter GenericFormatter             // implicit -> uses the current directory name
+            -watch                                  // implicit for FileSystemSource -> recursively watches the source dir for changes
+        -source /movies 
+            -pattern "tmdb*.json"
+            -extractor TMDBExtractor
+            -formatter MovieFormatter
+            -watch
+        -source /mp3
+            -pattern "album.json"
+            -extractor GenericMetadataExtractor
+            -formatter AlbumFormatter
+ */
+
+interface SourceType { }
+interface Source { }
+interface Pattern { }
+interface Extractor { }
+interface Formatter { }
 
 class UrchinFSEntry {
     string display_name = null;
