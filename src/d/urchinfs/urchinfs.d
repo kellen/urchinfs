@@ -13,10 +13,67 @@ static const int W_OK = 2;
 static const int DIRSIZE = 4096;
 
 /*
+ * URCHINFS(1)
+ * 
+ * NAME
+ *      urchinfs - faceted-search FUSE filesystem
+ *
+ * SYNOPSIS
+ *      urchinfs MOUNTPOINT -t TYPE [TYPE_OPTIONS] [-f FORMATTER]
+ *      urchinfs MOUNTPOINT -s SOURCEDIR [-p PATTERN | -g GLOB] [-w] [-e EXTRACTOR] [-f FORMATTER]
+ *
+ * DESCRIPTION
+ *      urchinfs presents a faceted-search-style navigation of items on the filesystem.
+ *      
+ *      urchinfs searches a source of type TYPE and collects key-value pairs for each item and presents
+ *      the items, the keys, and the values as directories under MOUNTPOINT. In directories under
+ *      MOUNTPOINT, some number of key-value pairs are selected and the items which have these key-
+ *      value combinations are presented, as formatted by FORMATTER. 
+ *
+ *      The root contains all items and the special directory "^" (read: "AND"), which contains the 
+ *      available keys. Subdirectories of "^" are the available values. Subdirectories of a value are 
+ *      like the root, but may additionally contain the special directory "+" (read: "OR") when there
+ *      are other values available.
+ *
+ *      The contents of the directory /^/type/movie/^/year/1948/+/1949/ would be the items which have
+ *      the key 'type' with the value 'movie' and the key 'year' with either the value '1948' or the
+ *      value '1949'.
+ *
+ * OPTIONS
+ *      -t TYPE, --type=TYPE
+ *          The type of source, default DirectoryFileMetadataSource
+ *      -f FORMATTER, --formatter=FORMATTER
+ *          The formatter, default GenericFormatter
+ * TYPE_OPTIONS
+ *  DirectoryFileMetadataSource: -s SOURCE [-p PATTERN | -g GLOB] [-w]
+ *      -s SOURCE, --source=SOURCE
+ *          The source directory
+ *      -g GLOB, --glob=GLOB
+ *          Globbing expression, default "*.json"
+ *      -p PATTERN, --pattern=PATTERN
+ *          Regular expression.
+ *      -e EXTRACTOR, --extractor=EXTRACTOR
+ *          The extractor to apply.
+ *      -w, --watch
+ *          Watch for changes in the filesystem
+ *
+ * FORMATTING
+ *      GenericFormatter just returns the original item name
+ *
+ * ENVIRONMENT VARIALBES
+ * EXAMPLES
+ * EXIT STATUS
+ * COPYRIGHT
+ * BUGS
+ * SEE ALSO
+ * NOTES
+ */
+
+/*
  * Potential command line 
  * urchinfs /media
-        -source /movies 
-            -type FilesystemSource                  // implicit -> this is a filesystem datasource
+        -type FilesystemSource                      // implicit -> this is a filesystem datasource
+            -source /movies 
             -pattern "metadata.json"                // implicit -> looks for files named "metadata.json"
             -extractor GenericMetadataExtractor     // implicit -> parses first-level JSON key-value pairs
             -formatter GenericFormatter             // implicit -> uses the current directory name
