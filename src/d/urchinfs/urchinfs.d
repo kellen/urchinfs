@@ -20,32 +20,33 @@ static const int DIRSIZE = 4096;
  *
  * SYNOPSIS
  *      urchinfs MOUNTPOINT -t TYPE [TYPE_OPTIONS] [-f FORMATTER]
- *      urchinfs MOUNTPOINT -s SOURCEDIR [-p PATTERN | -g GLOB] [-w] [-e EXTRACTOR] [-f FORMATTER]
  *
  * DESCRIPTION
  *      urchinfs presents a faceted-search-style navigation of items on the filesystem.
  *      
- *      urchinfs searches a source of type TYPE and collects key-value pairs for each item and presents
- *      the items, the keys, and the values as directories under MOUNTPOINT. In directories under
- *      MOUNTPOINT, some number of key-value pairs are selected and the items which have these key-
- *      value combinations are presented, as formatted by FORMATTER. 
+ *      urchinfs searches a source of type TYPE and collects key-value pairs for each item. 
+ *      In MOUNTPOINT, the items are displayed as subdirectories as formatted by FORMATTER.
+ *      In the special directory "^" (read: "AND") subdirectories represent keys. In a key
+ *      directory, subdirectories represent values. The contents of a value directory are
+ *      the items with matching key-value pairs, the special "^" directory if there are 
+ *      remaining unselected keys, and the special "+" directory (read: "OR"). In the "+"
+ *      directory, subdirectories represent additional values for the last selected key.
  *
- *      The root contains all items and the special directory "^" (read: "AND"), which contains the 
- *      available keys. Subdirectories of "^" are the available values. Subdirectories of a value are 
- *      like the root, but may additionally contain the special directory "+" (read: "OR") when there
- *      are other values available.
- *
- *      The contents of the directory /^/type/movie/^/year/1948/+/1949/ would be the items which have
- *      the key 'type' with the value 'movie' and the key 'year' with either the value '1948' or the
- *      value '1949'.
- *
+ *      Items are displayed if they have all selected keys and match at least one of the 
+ *      selected values for each key.
+ 
  * OPTIONS
  *      -t TYPE, --type=TYPE
  *          The type of source, default DirectoryFileMetadataSource
  *      -f FORMATTER, --formatter=FORMATTER
  *          The formatter, default GenericFormatter
- * TYPE_OPTIONS
- *  DirectoryFileMetadataSource: -s SOURCE [-p PATTERN | -g GLOB] [-w]
+ *
+ * TYPES
+ *  DirectoryFileMetadataSource
+ *      Indexes directories as items using metadata extracted from a metadata file
+ *
+ *      TYPE_OPTIONS: -s SOURCE [-p PATTERN | -g GLOB] [-w]
+ *
  *      -s SOURCE, --source=SOURCE
  *          The source directory
  *      -g GLOB, --glob=GLOB
@@ -53,15 +54,21 @@ static const int DIRSIZE = 4096;
  *      -p PATTERN, --pattern=PATTERN
  *          Regular expression.
  *      -e EXTRACTOR, --extractor=EXTRACTOR
- *          The extractor to apply.
+ *          The extractor to apply, default JsonExtractor
  *      -w, --watch
  *          Watch for changes in the filesystem
  *
  * FORMATTING
- *      GenericFormatter just returns the original item name
+ *  GenericFormatter
+ *      Returns the original item name, disambiguated if necessary
  *
- * ENVIRONMENT VARIALBES
+ * ENVIRONMENT VARIABLES
  * EXAMPLES
+ *
+ *  FIXME -> multiple sources
+ *
+ * PLUGINS
+ *
  * EXIT STATUS
  * COPYRIGHT
  * BUGS
@@ -69,31 +76,24 @@ static const int DIRSIZE = 4096;
  * NOTES
  */
 
-/*
- * Potential command line 
- * urchinfs /media
-        -type FilesystemSource                      // implicit -> this is a filesystem datasource
-            -source /movies 
-            -pattern "metadata.json"                // implicit -> looks for files named "metadata.json"
-            -extractor GenericMetadataExtractor     // implicit -> parses first-level JSON key-value pairs
-            -formatter GenericFormatter             // implicit -> uses the current directory name
-            -watch                                  // implicit for FileSystemSource -> recursively watches the source dir for changes
-        -source /movies 
-            -pattern "tmdb*.json"
-            -extractor TMDBExtractor
-            -formatter MovieFormatter
-            -watch
-        -source /mp3
-            -pattern "album.json"
-            -extractor GenericMetadataExtractor
-            -formatter AlbumFormatter
- */
+// class for command line options
+class Option {
+    string option;
+    string value;
+}
 
-interface SourceType { }
-interface Source { }
-interface Pattern { }
-interface Extractor { }
-interface Formatter { }
+interface Type { 
+    // return the name of this source type
+    string name();
+    // FIXME this needs to return UrchinFSEntries(?)
+    // given a set of command line options, return the metadata
+    string[][string] init(immutable Option[]);
+}
+
+interface Formatter { 
+    // given a set of metadata, return a displayable name
+    string format(immutable string[][string] metadata);
+}
 
 class UrchinFSEntry {
     string display_name = null;
