@@ -25,8 +25,8 @@ static const int DIRSIZE = 4096;
  *      urchinfs presents a faceted-search-style navigation of items on the filesystem.
  *      
  *      urchinfs searches a source of type TYPE and collects key-value pairs for each item. 
- *      In MOUNTPOINT, the items are displayed as subdirectories as formatted by FORMATTER.
- *      In the special directory "^" (read: "AND") subdirectories represent keys. In a key
+ *      In MOUNTPOINT, items are displayed as symlinks, as formatted by FORMATTER. In the 
+ *      special directory "^" (read: "AND") subdirectories represent keys. In a key 
  *      directory, subdirectories represent values. The contents of a value directory are
  *      the items with matching key-value pairs, the special "^" directory if there are 
  *      remaining unselected keys, and the special "+" directory (read: "OR"). In the "+"
@@ -93,6 +93,15 @@ interface Type {
 interface Formatter { 
     // given a set of metadata, return a displayable name
     string format(immutable string[][string] metadata);
+}
+
+interface UrchinFSEntry {
+    // the display name of this item
+    string display_name();
+    // the destination on the filesystem to which symlinks should point
+    string destination();
+    // the metadata for this item
+    string[][string] metadata();
 }
 
 class UrchinFSEntry {
