@@ -1,0 +1,5 @@
+[package]
+
+name = "urchinfs"
+version = "0.0.1"
+authors = [ "Kellen Dye <kellen@cretin.net>" ]
