@@ -1,4 +1,14 @@
-Dependencies:
+urchin-fs
+---------
 
-https://github.com/zargony/rust-fuse
-requires:  sudo apt-get install pkg-config
+Rust implementation.
+
+## Build
+
+### Prerequiresite
+
+`rust-fuse` requires pkg-config and the fuse development files:
+
+```
+sudo apt-get install pkg-config libfuse-dev
+```
