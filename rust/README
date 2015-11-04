@@ -1,3 +1,4 @@
 Dependencies:
 
 https://github.com/zargony/rust-fuse
+requires:  sudo apt-get install pkg-config

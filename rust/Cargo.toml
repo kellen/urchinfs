@@ -3,3 +3,16 @@
 name = "urchinfs"
 version = "0.0.1"
 authors = [ "Kellen Dye <kellen@cretin.net>" ]
+description = "faceted search FUSE filesystem"
+homepage = "https://github.com/kellen/urchinfs"
+repository = "https://github.com/kellen/urchinfs"
+readme = "README.md"
+keywords = ["fuse", "filesystem", "metadata", "faceted search"]
+license = "MIT"
+
+[dependencies]
+fuse = "0.2.7"
+#log = "0.3"
+#time = "0.1"
+#thread-scoped = "1.0"
+
