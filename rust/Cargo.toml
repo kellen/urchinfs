@@ -12,7 +12,8 @@ license = "MIT"
 
 [dependencies]
 fuse = "0.2.7"
+libc = "0.1"
 #log = "0.3"
-#time = "0.1"
+time = "0.1"
 #thread-scoped = "1.0"
 

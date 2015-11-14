@@ -10,5 +10,9 @@ Rust implementation.
 `rust-fuse` requires pkg-config and the fuse development files:
 
 ```
-sudo apt-get install pkg-config libfuse-dev
+sudo apt-get install pkg-config fuse libfuse-dev
 ```
+
+### Debugging
+
+To get a stacktrace, run `export RUST_BACKTRACE=1`
