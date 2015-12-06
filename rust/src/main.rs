@@ -15,18 +15,6 @@ use time::Timespec;
 use argparse::{ArgumentParser, StoreTrue, Store};
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyEmpty, ReplyDirectory};
 
-const DEBUG : bool = true;
-// FIXME I hate macros. Basically the same as println! but with an IF!!!!!
-macro_rules! log {
-    ($fmt:expr) => (if DEBUG {println!(concat!($fmt, "\n"))});
-    ($fmt:expr, $($arg:tt)*) => (if DEBUG {println!(concat!($fmt, "\n"), $($arg)*)});
-}
-// FIMXE this should output to stderr or to syslog
-macro_rules! error {
-    ($fmt:expr) => (if DEBUG {println!(concat!($fmt, "\n"))});
-    ($fmt:expr, $($arg:tt)*) => (if DEBUG {println!(concat!($fmt, "\n"), $($arg)*)});
-}
-
 // FIXME these are ugly as fuck and it seems like a BAD DECISION to have these kind of macros in rust. 
 // FIXME in any case, clean up our usage of these later.
 // from: http://stackoverflow.com/questions/28392008/more-concise-hashmap-initialization
