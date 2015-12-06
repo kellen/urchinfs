@@ -154,9 +154,21 @@ fn main () {
     // FIXME seems weird to have to have two variable refs
     let vec;
     let mut options : &[&OsStr] = &[];
-    if optstr!= "" {
-        vec = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
+    if optstr.trim() != "" {
+        vec = optstr.trim().split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
         options = &vec;
+    }
+
+    if DEBUG {
+        if options.len() > 0 {
+            println!("using options:");
+            for s in options {
+                match s.to_str() {
+                    Some(y) => {println!("\t{}", y);}
+                    None => {}
+                }
+            }
+        }
     }
 
     // FIMXE do this better
