@@ -7,6 +7,7 @@ use std::string::String;
 use std::fmt;
 use std::env;
 use std::path::Path;
+use std::collections::HashMap;
 use std::ffi::OsStr;
 
 use libc::ENOENT;
@@ -54,9 +55,9 @@ const HELLO_TXT_ATTR: FileAttr = FileAttr {
     flags: 0,
 };
 
-struct HelloFS;
+struct UrchinFS;
 
-impl Filesystem for HelloFS {
+impl Filesystem for UrchinFS {
     fn lookup (&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEntry) {
         if parent == 1 && name.to_str() == Some("hello.txt") {
             reply.entry(&TTL, &HELLO_TXT_ATTR, 0);
@@ -113,5 +114,5 @@ fn main () {
         vec = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
         options = &vec;
     }
-    fuse::mount(HelloFS, &mountpoint, options);
+    fuse::mount(UrchinFS, &mountpoint, options);
 }
