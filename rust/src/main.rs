@@ -19,6 +19,7 @@ use libc::{ENOSYS,c_int,ENOENT};
 use time::Timespec;
 use argparse::{ArgumentParser, StoreTrue, Store};
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyEmpty, ReplyDirectory};
+use fuse::argument::ArgumentIterator;
 
 // FIXME these are ugly as fuck and it seems like a BAD DECISION to have these kind of macros in rust. 
 // FIXME in any case, clean up our usage of these later.
@@ -120,6 +121,12 @@ impl Filesystem for UrchinFS {
     }
 
     fn readdir (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
+        let mut data = ArgumentIterator::new(_req.data);
+        info!("readdir path?? {}", data.fetch_path().to_str().unwrap());
+
+        // FIXME correct besides field/type visibility
+        //let mut data = ArgumentIterator::new(_req.data);
+        //info!("readdir path?? {}", data.fetch_path().to_str().unwrap());
         info!("readdir ino:{} offset:{}", ino, offset);
         if ino == 1 {
             if offset == 0 {
