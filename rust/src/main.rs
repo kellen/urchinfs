@@ -7,7 +7,6 @@ use std::string::String;
 use std::fmt;
 use std::env;
 use std::path::Path;
-use std::collections::HashMap;
 use std::ffi::OsStr;
 
 use libc::ENOENT;
@@ -108,9 +107,9 @@ fn main () {
     }
 
     // FIXME seems weird to have to have two variable refs
-    let mut vec;
+    let vec;
     let mut options : &[&OsStr] = &[];
-    if(optstr!= "") {
+    if optstr!= "" {
         vec = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
         options = &vec;
     }
