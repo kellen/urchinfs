@@ -21,6 +21,11 @@ macro_rules! log {
     ($fmt:expr) => (if DEBUG {println!(concat!($fmt, "\n"))});
     ($fmt:expr, $($arg:tt)*) => (if DEBUG {println!(concat!($fmt, "\n"), $($arg)*)});
 }
+// FIMXE this should output to stderr or to syslog
+macro_rules! error {
+    ($fmt:expr) => (if DEBUG {println!(concat!($fmt, "\n"))});
+    ($fmt:expr, $($arg:tt)*) => (if DEBUG {println!(concat!($fmt, "\n"), $($arg)*)});
+}
 
 // FIXME these are ugly as fuck and it seems like a BAD DECISION to have these kind of macros in rust. 
 // FIXME in any case, clean up our usage of these later.
