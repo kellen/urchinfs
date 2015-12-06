@@ -7,13 +7,34 @@ use std::string::String;
 use std::fmt;
 use std::env;
 use std::path::Path;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 
-use libc::ENOENT;
+use libc::{ENOSYS,c_int,ENOENT};
 use time::Timespec;
 use argparse::{ArgumentParser, StoreTrue, Store};
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyDirectory};
+
+// FIXME these are ugly as fuck and it seems like a BAD DECISION to have these kind of macros in rust. 
+// FIXME in any case, clean up our usage of these later.
+// from: http://stackoverflow.com/questions/28392008/more-concise-hashmap-initialization
+// auto-converts to String
+macro_rules! hashmap {
+    ($( $key: expr => $val: expr ),*) => {{
+         let mut map = ::std::collections::HashMap::new();
+         $( map.insert($key.to_string(), $val); )*
+         map
+    }}
+}
+// similar to above, jesus christ this is terrible
+macro_rules! hashset {
+    ($( $x: expr ),* ) => {{
+            let mut set = HashSet::new();
+            $( set.insert($x.to_string()); )*
+            set 
+    }}
+}
+
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };                 // 1 second
 
@@ -55,7 +76,15 @@ const HELLO_TXT_ATTR: FileAttr = FileAttr {
     flags: 0,
 };
 
-struct UrchinFS;
+struct UrchinFSEntry {
+    display_name: String,
+    destination: String,
+    metadata: HashMap<String, HashSet<String>>
+}
+
+struct UrchinFS {
+    entries: Vec<UrchinFSEntry>
+}
 
 impl Filesystem for UrchinFS {
     fn lookup (&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEntry) {
@@ -114,5 +143,16 @@ fn main () {
         vec = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
         options = &vec;
     }
-    fuse::mount(UrchinFS, &mountpoint, options);
+
+    // FIMXE do this better
+    let easter = UrchinFSEntry {
+        display_name: "Easter Parade (1948) color".to_string(),
+        destination: "/home/kellen/test".to_string(),
+        metadata: hashmap!["year" => hashset!["1948"], "color" => hashset!["color"]]
+    };
+
+    let entries = vec![easter];
+
+    // 
+    fuse::mount(UrchinFS {entries: entries}, &mountpoint, options);
 }
