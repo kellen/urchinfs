@@ -13,7 +13,14 @@ use std::ffi::OsStr;
 use libc::{ENOSYS,c_int,ENOENT};
 use time::Timespec;
 use argparse::{ArgumentParser, StoreTrue, Store};
-use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyDirectory};
+use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyEmpty, ReplyDirectory};
+
+const DEBUG : bool = true;
+// FIXME I hate macros. Basically the same as println! but with an IF!!!!!
+macro_rules! log {
+    ($fmt:expr) => (if DEBUG {println!(concat!($fmt, "\n"))});
+    ($fmt:expr, $($arg:tt)*) => (if DEBUG {println!(concat!($fmt, "\n"), $($arg)*)});
+}
 
 // FIXME these are ugly as fuck and it seems like a BAD DECISION to have these kind of macros in rust. 
 // FIXME in any case, clean up our usage of these later.
@@ -123,6 +130,10 @@ impl Filesystem for UrchinFS {
             reply.error(ENOENT);
         }
     }
+
+    fn access (&mut self, _req: &Request, _ino: u64, _mask: u32, reply: ReplyEmpty) {
+        reply.error(ENOSYS);
+    }
 }
 
 fn main () {
@@ -135,6 +146,10 @@ fn main () {
         ap.refer(&mut mountpoint).add_argument("mountpoint", Store, "the mountpoint").required();
         ap.parse_args_or_exit();
     }
+
+// -o plugin=foo,plugin=bar,source=/home/kellen/films/,glob=*.json,format=json,watch=true,type=directory,formatter=generic
+// FIXME dynamically load plugins for globbing/formatting see:
+// http://stackoverflow.com/questions/22461457/does-rust-have-a-dlopen-equivalent
 
     // FIXME seems weird to have to have two variable refs
     let vec;
