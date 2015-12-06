@@ -1,12 +1,18 @@
 extern crate fuse;
 extern crate libc;
 extern crate time;
+extern crate argparse;
 
+use std::string::String;
 use std::fmt;
 use std::env;
 use std::path::Path;
+use std::collections::HashMap;
+use std::ffi::OsStr;
+
 use libc::ENOENT;
 use time::Timespec;
+use argparse::{ArgumentParser, StoreTrue, Store};
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyDirectory};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };                 // 1 second
@@ -91,8 +97,40 @@ impl Filesystem for HelloFS {
 }
 
 fn main () {
-    let mountpoint = env::args_os().nth(1).unwrap();
-    //let str = mountpoint.to_str().unwrap();
-    //println!("{}", &str);
-    fuse::mount(HelloFS, &mountpoint, &[]);
+    let mut mountpoint = String::new();
+    let mut optstr = String::new();
+    {
+        let mut ap = ArgumentParser::new();
+        ap.set_description("faceted-search FUSE filesystem");
+        ap.refer(&mut optstr).add_option(&["-o", "--options"], Store, "comma-separated mount options");
+        ap.refer(&mut mountpoint).add_argument("mountpoint", Store, "the mountpoint").required();
+        ap.parse_args_or_exit();
+    }
+    //println!("{}", &mountpoint);
+    //println!("{}", &optstr);
+    let mut vec;
+    let mut options : &[&OsStr] = &[];
+    //let mut options : &[&str] = &[];
+    if(optstr!= "") {
+        //options = optstr.split(",").collect::<Vec<_>>().as_slice()
+        vec = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
+        options = &vec;
+        options = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
+
+        /*
+        options = optstr.split(",")
+                        .map(|s| OsStr::new(s))
+                        .collect::<Vec<_>>()
+                        .as_slice()
+                        ;
+        */
+        /*
+        let vec = optstr.split(",").collect::<Vec<_>>();
+        let optvec : Vec<OsStr> = Vec::new();
+        for opt in &vec {
+            println!("{}", opt);
+        }
+        */
+    }
+    fuse::mount(HelloFS, &mountpoint, options);
 }

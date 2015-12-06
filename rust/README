@@ -13,6 +13,12 @@ Rust implementation.
 sudo apt-get install pkg-config fuse libfuse-dev
 ```
 
+### Build
+
+```
+cargo build
+```
+
 ### Debugging
 
 To get a stacktrace, run `export RUST_BACKTRACE=1`
