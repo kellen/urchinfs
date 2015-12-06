@@ -146,13 +146,25 @@ fn main () {
 
     // FIMXE do this better
     let easter = UrchinFSEntry {
-        display_name: "Easter Parade (1948) color".to_string(),
+        display_name: "Easter Parade (1948, color)".to_string(),
         destination: "/home/kellen/test".to_string(),
         metadata: hashmap!["year" => hashset!["1948"], "color" => hashset!["color"]]
     };
+    let city = UrchinFSEntry {
+        display_name: "The Naked City (1948, bw)".to_string(),
+        destination: "/home/kellen/test".to_string(),
+        metadata: hashmap!["year" => hashset!["1948"], "color" => hashset!["black-and-white"]]
+    };
+    let vanish = UrchinFSEntry {
+        display_name: "The Lady Vanishes (1938, bw)".to_string(),
+        destination: "/home/kellen/test".to_string(),
+        metadata: hashmap!["year" => hashset!["1938"], "color" => hashset!["black-and-white"]]
+    };
+    let kiss = UrchinFSEntry {
+        display_name: "Kiss Me Deadly (1955, bw)".to_string(),
+        destination: "/home/kellen/test".to_string(),
+        metadata: hashmap!["year" => hashset!["1955"], "color" => hashset!["black-and-white"]]
+    };
 
-    let entries = vec![easter];
-
-    // 
-    fuse::mount(UrchinFS {entries: entries}, &mountpoint, options);
+    fuse::mount(UrchinFS {entries: vec![easter, city, vanish, kiss]}, &mountpoint, options);
 }
