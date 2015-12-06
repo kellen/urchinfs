@@ -106,31 +106,13 @@ fn main () {
         ap.refer(&mut mountpoint).add_argument("mountpoint", Store, "the mountpoint").required();
         ap.parse_args_or_exit();
     }
-    //println!("{}", &mountpoint);
-    //println!("{}", &optstr);
+
+    // FIXME seems weird to have to have two variable refs
     let mut vec;
     let mut options : &[&OsStr] = &[];
-    //let mut options : &[&str] = &[];
     if(optstr!= "") {
-        //options = optstr.split(",").collect::<Vec<_>>().as_slice()
         vec = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
         options = &vec;
-        options = optstr.split(",").map(|s| OsStr::new(s)).collect::<Vec<_>>();
-
-        /*
-        options = optstr.split(",")
-                        .map(|s| OsStr::new(s))
-                        .collect::<Vec<_>>()
-                        .as_slice()
-                        ;
-        */
-        /*
-        let vec = optstr.split(",").collect::<Vec<_>>();
-        let optvec : Vec<OsStr> = Vec::new();
-        for opt in &vec {
-            println!("{}", opt);
-        }
-        */
     }
     fuse::mount(HelloFS, &mountpoint, options);
 }
