@@ -21,4 +21,6 @@ cargo build
 
 ### Debugging
 
-To get a stacktrace, run `export RUST_BACKTRACE=1`
+To get a stacktrace: `export RUST_BACKTRACE=1`
+
+To set logging level: `export RUST_LOG=urchinfs`

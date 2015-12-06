@@ -2,6 +2,9 @@ extern crate fuse;
 extern crate libc;
 extern crate time;
 extern crate argparse;
+#[macro_use]
+extern crate log;
+extern crate env_logger;
 
 use std::string::String;
 use std::fmt;
@@ -9,6 +12,8 @@ use std::env;
 use std::path::Path;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
+
+use log::LogLevel::Debug;
 
 use libc::{ENOSYS,c_int,ENOENT};
 use time::Timespec;
@@ -88,6 +93,7 @@ struct UrchinFS {
 
 impl Filesystem for UrchinFS {
     fn lookup (&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEntry) {
+        info!("lookup parent:{} name:{}", parent, name.to_str().unwrap());
         if parent == 1 && name.to_str() == Some("hello.txt") {
             reply.entry(&TTL, &HELLO_TXT_ATTR, 0);
         } else {
@@ -96,6 +102,7 @@ impl Filesystem for UrchinFS {
     }
 
     fn getattr (&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
+        info!("getattr {}", ino);
         match ino {
             1 => reply.attr(&TTL, &HELLO_DIR_ATTR),
             2 => reply.attr(&TTL, &HELLO_TXT_ATTR),
@@ -104,6 +111,7 @@ impl Filesystem for UrchinFS {
     }
 
     fn read (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
+        info!("read ino:{} offset:{}", ino, offset);
         if ino == 2 {
             reply.data(&HELLO_TXT_CONTENT.as_bytes()[offset as usize..]);
         } else {
@@ -112,6 +120,7 @@ impl Filesystem for UrchinFS {
     }
 
     fn readdir (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
+        info!("readdir ino:{} offset:{}", ino, offset);
         if ino == 1 {
             if offset == 0 {
                 reply.add(1, 0, FileType::Directory, ".");
@@ -124,12 +133,15 @@ impl Filesystem for UrchinFS {
         }
     }
 
-    fn access (&mut self, _req: &Request, _ino: u64, _mask: u32, reply: ReplyEmpty) {
+    fn access (&mut self, _req: &Request, ino: u64, _mask: u32, reply: ReplyEmpty) {
+        info!("access ino:{}", ino);
         reply.error(ENOSYS);
     }
 }
 
 fn main () {
+    env_logger::init().unwrap();
+
     let mut mountpoint = String::new();
     let mut optstr = String::new();
     {
@@ -152,12 +164,12 @@ fn main () {
         options = &vec;
     }
 
-    if DEBUG {
+    if log_enabled!(Debug) {
         if options.len() > 0 {
-            println!("using options:");
+            debug!("using options:");
             for s in options {
                 match s.to_str() {
-                    Some(y) => {println!("\t{}", y);}
+                    Some(y) => {debug!("\t{}", y);}
                     None => {}
                 }
             }
