@@ -16,6 +16,11 @@ may contain mp3/flac/ogg files, cover/cd scans, text files, etc. A
 "movie" may contain multiple video files, samples, subtitles, cover
 scans, etc.
 
+Implementations
+---------------
+
+Multiple non-working/incomplete implementations: python, D, rust.
+
 Usage
 -----
 
@@ -85,28 +90,3 @@ providing additional values, but
 [UTF-8 collation rules](http://unicode.org/reports/tr10/#Multi_Level_Comparison) 
 ignore punctuation in the first sorting stage, which resulted in the 
 facets being mixed in with the directory listings.
-
-Prerequisites
--------------
-
-### Debian/Ubuntu
-
-Add [d-apt](http://d-apt.sourceforge.net/) sources:
-
-```
-sudo wget http://master.dl.sourceforge.net/project/d-apt/files/d-apt.list \
-          -O /etc/apt/sources.list.d/d-apt.list
-sudo apt-get update 
-sudo apt-get -y --allow-unauthenticated install --reinstall d-apt-keyring 
-sudo apt-get update
-```
-
-Verify public key matches `0xEBCF975E5BA24D5E`
-
-Install fuse and dmd:
-
-```
-sudo apt-get install \
-     fuse libfuse2 libfuse-dev \
-     dmd-bin
-```
