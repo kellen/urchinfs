@@ -11,7 +11,9 @@ use std::fmt;
 use std::env;
 use std::path::Path;
 use std::collections::{HashMap, HashSet};
-use std::ffi::OsStr;
+use std::ffi::{CStr, OsStr};
+use std::os::unix::ffi::OsStrExt;
+use libc::c_char;
 
 use log::LogLevel::Debug;
 
@@ -19,7 +21,6 @@ use libc::{ENOSYS,c_int,ENOENT};
 use time::Timespec;
 use argparse::{ArgumentParser, StoreTrue, Store};
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyEmpty, ReplyDirectory};
-use fuse::argument::ArgumentIterator;
 
 // FIXME these are ugly as fuck and it seems like a BAD DECISION to have these kind of macros in rust. 
 // FIXME in any case, clean up our usage of these later.
@@ -121,8 +122,11 @@ impl Filesystem for UrchinFS {
     }
 
     fn readdir (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
-        let mut data = ArgumentIterator::new(_req.data);
-        info!("readdir path?? {}", data.fetch_path().to_str().unwrap());
+
+        let ptr = unsafe { _req.data.as_ptr()};
+        let s = unsafe { CStr::from_ptr(ptr as *const c_char) };
+
+        info!("readdir data?? {}", OsStr::from_bytes(s.to_bytes()).to_str().unwrap());
 
         // FIXME correct besides field/type visibility
         //let mut data = ArgumentIterator::new(_req.data);
