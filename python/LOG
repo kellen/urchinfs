@@ -1,8 +1,0 @@
-INFO:root:Preparing to mount file system
-INFO:root:cmdline
-INFO:root:(<Values at 0x7f43af88b3f8: {'xyz': None, 'o': None}>, [])
-INFO:root:fuse_args
-INFO:root:< on /home/kellen/projects/urchinfs/python/mountpoint:
-  {'foreground': False, 'showhelp': False, 'showversion': False}
-  -o debug >
-INFO:root:Preparing to mount file system
