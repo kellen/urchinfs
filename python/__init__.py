@@ -10,6 +10,10 @@ import types
 import re
 
 import fuse
+
+# local
+import plugin, default
+
 from core import Stat, TemplateFS
 
 """urchin-fs TODO"""
@@ -34,8 +38,11 @@ class ConfigurationError(Exception):
 
 # TODO remove references to TemplateFS since it has some demo funcitonality we don't want
 class UrchinFS(TemplateFS):
-    plugin_keys = ["indexer", "matcher", "extractor", "merger", "formatter"]
     def __init__(self, *args, **kwargs):
+        self.plugin_search_paths = ["~/.urchinfs/plugins/"]
+        self.component_types = self.find_component_types()
+        self.plugin_keys = component_types.keys()
+
         super(UrchinFS, self).__init__(*args, **kwargs)
         # -o indexer=json,matcher=json,extractor=json,merger=default,formatter=default,source="../test",watch=true
         self.parser.add_option(mountopt="source", help="source directory")
@@ -46,59 +53,70 @@ class UrchinFS(TemplateFS):
         self.parser.add_option(mountopt="formatter", help="formatter class")
         self.parser.add_option(mountopt="plugin", help="plugin class")
         self.parser.add_option(mountopt="watch", help="watch the source directory for changes?")
-        self.plugin_search_paths = ["~/.urchinfs/plugins/"]
 
-    main_module = "__init__"
+    def find_component_types(self):
+        components = dict()
+        for cls in plugin.__dict__.items():
+            if isinstance(cls, type) and hasattr(cls, 'component'):
+                components[cls.name] = cls
+        return components
+
+    plugin_main_module = "__init__"
     def load_plugins(self):
         # roughly like https://lkubuntu.wordpress.com/2012/10/02/writing-a-python-plugin-api/
         plugins = dict()
         for plugin_path in plugin_search_paths:
             for name in os.listdir(plugin_path):
                 path = os.path.join(plugin_path, name)
-                if os.path.isdir(path) and "%s.py" % main_module in os.listdir(path):
+                if os.path.isdir(path) and "%s.py" % plugin_main_module in os.listdir(path):
                     try:
                         info = imp.find_module("__init__", [location])
                         # FIXME this seems wrong
-                        plugins[name] = imp.load_module(main_module, info)
+                        plugins[name] = imp.load_module(plugin_main_module, info)
                     except ImportError:
-                        logging.warning("plugin module '%s' has no '%s'" % (name, main_module))
+                        logging.warning("plugin module '%s' has no '%s'" % (name, plugin_main_module))
         return plugins
 
-
-    def import_class(self, cl):
-        # FIXME perhaps do this instead: https://lkubuntu.wordpress.com/2012/10/02/writing-a-python-plugin-api/
-        # per http://stackoverflow.com/questions/547829/how-to-dynamically-load-a-python-class
-        try:
-            (modulename, classname) = cl.rsplit('.', 1)
-            m = __import__(modulename, globals(), locals(), [classname])
-            return getattr(m, classname)
-        except:
-            raise ConfigurationError("Could not load class '%s'" % cl)
+    def find_plugin_components(self, plugins):
+        # find all named plugin classes
+        named = []
+        for plugin in plugins:
+            for (name, cls) in plugin.__dict__.items():
+                if isinstance(cls, type) and hasattr(cls, "name"):
+                    named.append(cls)
+        # sort by type
+        plugin_components = dict()
+        for component_name,component_cls in self.component_types.iteritems():
+            # fuck duck typing
+            plugin_components[component_name] = {cls.name: cls for cls in named if issubclass(cls, component_cls)}
+        return plugin_components
 
     def fsinit(self):
-        loaded_plugins = load_plugins()
-        plugin_components = find_components()
+        plugins = load_plugins()
+        plugin_components = find_components(plugins)
 
         # FIXME split options into option sets if python-fuse can even accept duplicate args
-        from_cmdline = {key: cmdline[key] for key in plugin_keys if key in cmdline}
+        from_cmdline = {key: cmdline[key] for key in self.plugin_keys if key in cmdline} # FIXME this should be all options
         options = [from_cmdline]
         for option_set in options:
+            config = dict() # FIXME which options should be here?
             # each "option set" describes the configuration of a specific source directory/way of formatting
-            config = dict()
-            plugin_modules = {key: import_class(option_set[key]) for key in plugin_keys if key in option_set}
-            for k,v in plugin_modules.iteritems():
-                if k in loaded_plugins:
-                    config[key] = loaded_plugins[k]
-                elif k in available_plugins
-                    plugin = load_plugin(
-                    config[key]
-
-
-
-
-            # FIXME use plugins to get correct classes
-            #matcher = 
-            items = matcher.match(config["path"])
+            plugin_config = {
+                    "indexer": None,
+                    "matcher": default.SelfMetadataMatcher,
+                    "extractor": None,
+                    "merger": default.DefaultMerger,
+                    "formatter":  default.DefaultFormatter
+                    }
+            for option, option_value in option_set.iteritems():
+                if option in self.plugin_keys:
+                    if option_value in available_components[option]:
+                        # fetch the class with the short name for this component
+                        config[option] = plugin_components[option][option_value]
+            for k,v in plugin_config:
+                if not v:
+                    raise ConfigurationError("No component specified for '%s'" % k)
+            components = {k: cls(config) for k,cls in plugin_config.iteritems()}
 
 def main():
     # FIXME this usage sucks

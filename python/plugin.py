@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from urchinfs import Indexer, MetadataMatcher, Formatter
-from urchinfs.generic import SelfMetadataMatcher, DefaultFormatter
+from urchinfs.default import SelfMetadataMatcher, DefaultFormatter
 
 """
 class Plugin(object):
@@ -16,6 +16,7 @@ class Plugin(object):
 
 class Indexer(object):
     """Finds items to be indexed"""
+    component = "indexer"
     def __init__(self, config):
         pass
     def index(self, path):
@@ -24,6 +25,7 @@ class Indexer(object):
 
 class MetadataMatcher(object):
     """For a given item path, matches paths from which metadata should be extracted"""
+    component = "matcher"
     def __init__(self, config):
         pass
     def match(self, path):
@@ -32,6 +34,7 @@ class MetadataMatcher(object):
 
 class MetadataExtractor(object):
     """Metadata extractor"""
+    component = "extractor"
     def __init__(self, config):
         pass
     def extract(self, path):
@@ -43,6 +46,7 @@ class MetadataExtractor(object):
 
 class MetadataMerger(object):
     """Merges metadata when multiple sources are involved"""
+    component = "merger"
     def __init__(self, config):
         pass
     def merge(self, metadata):
@@ -51,6 +55,7 @@ class MetadataMerger(object):
 
 class Formatter(object):
     """Formatter for display names."""
+    component = "formatter"
     def format(self, original_name, metadata):
         """Takes the original file/directory name and associated metadata and returns one or more formatted "display names" """
         raise NotImplementedError()
