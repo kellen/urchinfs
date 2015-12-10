@@ -5,27 +5,27 @@ import os
 from fnmatch import fnmatch
 from mutagen.easyid3 import EasyID3
 
-from urchinfs import Formatter
-from urchinfs.abstract import AbstractDirectoryIndexer, AbstractFileIndexer, AbstractFileMetadataMatcher
+from plugin import Formatter, MetadataExtractor, MetadataMerger
+from abstract import AbstractDirectoryIndexer, AbstractFileIndexer, AbstractFileMetadataMatcher
 
 MP3_GLOB = "*.mp3"
 
-def Mp3DirectoryIndexer(AbstractDirectoryIndexer):
+class Mp3DirectoryIndexer(AbstractDirectoryIndexer):
     name = "mp3"
     def __init__(self, config):
         super().__init__(self, config, MP3_GLOB)
 
-def Mp3FileIndexer(AbstractFileIndexer):
+class Mp3FileIndexer(AbstractFileIndexer):
     name = "mp3-file"
     def __init__(self, config):
         super().__init__(self, config, MP3_GLOB)
 
-def Mp3FileMetadataMatcher(AbstractFileMetadataMatcher):
+class Mp3FileMetadataMatcher(AbstractFileMetadataMatcher):
     name = "mp3"
     def __init__(self, config):
         super().__init__(self, config, MP3_GLOB)
 
-def Mp3MetadataExtractor(MetadataExtractor):
+class Mp3MetadataExtractor(MetadataExtractor):
     name = "mp3"
     def __init__(self, config):
         pass
@@ -35,19 +35,19 @@ def Mp3MetadataExtractor(MetadataExtractor):
         print id3.keys()
         raise NotImplementedError()
 
-def Mp3AlbumMetadataMerger(MetadataMerger):
+class Mp3AlbumMetadataMerger(MetadataMerger):
     name = "mp3"
     def __init__(self, config):
         pass
     def merge(self, metadata):
         raise NotImplementedError()
 
-def Mp3DirectoryFormatter(Formatter):
+class Mp3DirectoryFormatter(Formatter):
     name = "mp3"
     def format(self, original_name, metadata):
         return original_name
 
-def Mp3FileFormatter(Formatter):
+class Mp3FileFormatter(Formatter):
     name = "mp3-file"
     def format(self, original_name, metadata):
         return original_name

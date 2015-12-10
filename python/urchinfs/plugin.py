@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from urchinfs import Indexer, MetadataMatcher, Formatter
-from urchinfs.default import SelfMetadataMatcher, DefaultFormatter
-
 """
 class Plugin(object):
     def __init__(self, item_matcher=None, metadata_matcher=SelfMetadataMatcher,
@@ -50,7 +47,10 @@ class MetadataMerger(object):
     def __init__(self, config):
         pass
     def merge(self, metadata):
-        """Merges metadata from multiple sources, potentially removing some keys or values"""
+        """
+        Merges `metadata`, a list of dicts with string keys and sets of strings as values
+        into a single dict with string keys and sets of strings as values.
+        """
         raise NotImplementedError()
 
 class Formatter(object):

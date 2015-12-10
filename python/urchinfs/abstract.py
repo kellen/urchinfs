@@ -3,16 +3,16 @@
 
 import os
 from fnmatch import fnmatch
-from urchinfs import Indexer, MetadataMatcher
+from plugin import Indexer, MetadataMatcher
 
-def AbstractDirectoryIndexer(Indexer):
+class AbstractDirectoryIndexer(Indexer):
     """Recursively finds directories in path which have a child file which matches the glob"""
     def __init__(self, config, glob):
         self.glob = glob;
     def match(self, path):
         return [x[0] for x in os.walk(path) if [f for f in x[2] if fnmatch(f, self.glob)]]
 
-def AbstractFileIndexer(Indexer):
+class AbstractFileIndexer(Indexer):
     """Recursively finds files which match the glob"""
     def __init__(self, config, glob):
         self.glob = glob
@@ -22,7 +22,7 @@ def AbstractFileIndexer(Indexer):
         filtered = [file for file in flattened if fnmatch(file, self.glob)]
         return filtered
 
-def AbstractFileMetadataMatcher(MetadataMatcher):
+class AbstractFileMetadataMatcher(MetadataMatcher):
     """
     If `path` is a directory, returns the paths of files which are children and which match `glob`,
     otherwise returns an empty list.

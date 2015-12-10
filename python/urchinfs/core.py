@@ -282,8 +282,8 @@ class TemplateFS(fuse.Fuse):
         You may further customize command line argument parsing setting
         the parser_class argument in __init__.
         """
-        self.parser.add_option(mountopt="xyz",
-                   help="description which shows up with templatefs.py -h")
+        #self.parser.add_option(mountopt="xyz",
+        #           help="description which shows up with templatefs.py -h")
 
     def fsinit(self):
         """

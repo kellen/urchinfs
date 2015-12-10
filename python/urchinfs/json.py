@@ -4,21 +4,22 @@
 import os
 import json
 import logging
+import types
 
-from urchinfs import MetadataExtractor
-from urchinfs.generic import GenericDirectoryIndexer, GenericFileMetadataMatcher
+from plugin import MetadataExtractor
+from abstract import AbstractDirectoryIndexer, AbstractFileMetadataMatcher
 
 DEFAULT_JSON_GLOB = "metadata.json"
 JSON_GLOB = "*.json"
 
-def DefaultJsonDirectoryIndexer(GenericDirectoryIndexer):
+class DefaultJsonDirectoryIndexer(AbstractDirectoryIndexer):
     """Simple item matcher which returns directories containing a file "metadata.json" """
     name = "json"
     def __init__(self, config):
         super().__init__(self, config, DEFAULT_JSON_GLOB)
 
-def DefaultJsonFileMetadataMatcher(GenericFileMetadataMatcher):
-    name = "json-file"
+class DefaultJsonFileMetadataMatcher(AbstractFileMetadataMatcher):
+    name = "json"
     """Simple metadata matcher which returns the "metadata.json" file as its metadata source"""
     def __init__(self, config):
         super().__init__(self, config, DEFAULT_JSON_GLOB)
@@ -26,7 +27,7 @@ def DefaultJsonFileMetadataMatcher(GenericFileMetadataMatcher):
 class JsonMetadataExtractor(MetadataExtractor):
     name = "json"
     """
-    Generic JSON metadata extractor.
+    Abstract JSON metadata extractor.
 
     Converts non-string keys and values to strings if straightforward.
     Values must be lists or single values, otherwise they are ignored.
@@ -46,7 +47,7 @@ class JsonMetadataExtractor(MetadataExtractor):
                         md[key] = []
                         if type(v) in stringable_types:
                             md[key].append(unicode(v))
-                        else if type(v) in [list, tuple, set]:
+                        elif type(v) in [list, tuple, set]:
                             for val in v:
                                 if type(val) in stringable_types:
                                     md[key].append(unicode(val))

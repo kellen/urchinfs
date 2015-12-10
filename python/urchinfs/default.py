@@ -3,21 +3,25 @@
 
 import os
 from fnmatch import fnmatch
-from urchinfs import MetadataMatcher, MetadataMerger, Formatter
+from plugin import MetadataMatcher, MetadataMerger, Formatter
 
-def SelfMetadataMatcher(MetadataMatcher):
+class SelfMetadataMatcher(MetadataMatcher):
     """Minimal matcher which returns the item path"""
     name = "default"
     def match(self, path):
         return path
 
-# FIXME WRITE THIS
 class DefaultMerger(MetadataMerger):
     name = "default"
-    def __init(self, config):
-        pass
     def merge(self, metadata):
-        pass
+        merged = dict()
+        for d in metadata:
+            for k,v in d.iteritems():
+                if k not in merged:
+                    merged[k] = v
+                else:
+                    merged[k].update(v)
+        return merged
 
 class DefaultFormatter(Formatter):
     """Default formatter which returns the original item file/directory name"""
