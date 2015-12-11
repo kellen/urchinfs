@@ -12,6 +12,7 @@ import requests
 import urllib
 
 from tmdb3 import set_key, searchMovie
+from googlesearch import GoogleSearch
 
 logging.basicConfig(level=logging.DEBUG,)
 
@@ -22,41 +23,6 @@ class Usage(Exception):
 class SearchError(Exception):
     def __init__(self, msg):
         self.msg = msg
-
-class Google(object):
-    """Basically the same as googlesearch.GoogleSearch, but uses mozilla-like headers"""
-    URL_TEMPLATE = 'http://ajax.googleapis.com/ajax/services/search/web?v=1.0&%s'
-    HEADERS = {
-            #'User-Agent': "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:42.0) Gecko/20100101 Firefox/42.0",
-            #'Accept': "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-            #'Accept-Language': "en-US,en;q=0.5",
-            #'Accept-Encoding': "gzip, deflate"
-            #'DNT': "1"
-            #'Connection': "keep-alive"
-            #'Cache-Control': "max-age=0"
-            }
-    def __init__(self, query):
-        self.query = query
-        self._encoded_query = urllib.urlencode({'q': self.query})
-        self._results = None
-    @property
-    def results(self):
-        if self._results is None:
-            self._results = self.search()
-        return self._results
-    def search(self):
-        url = self.URL_TEMPLATE % self._encoded_query
-        response = requests.get(url) #, headers = self.HEADERS)
-        json = response.json()
-        results = json["responseData"]
-        status = json['responseStatus']
-        # details = json['responseDetails']
-        if status != 200:
-            logging.debug("error while searching google, status %s" % status)
-            raise SearchError(details)
-        return results
-    def hits(self):
-        return self.results["results"]
 
 class MovieFetcher(object):
     # from http://kodi.wiki/view/Advancedsettings.xml#cleanstrings
@@ -92,8 +58,8 @@ class MovieFetcher(object):
                         'site:imdb.com/title/'
                     ])
         logging.debug("querying google with: %s" % google_query)
-        gs = Google(google_query)
-        for hit in gs.hits():
+        gs = GoogleSearch(google_query)
+        for hit in gs.top_results():
             print hit["url"], "->", hit["titleNoFormatting"].replace(' - IMDb', '')
     def clean(self, query):
         query = query.replace(".", " ")
