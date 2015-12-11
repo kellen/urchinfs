@@ -11,5 +11,5 @@ setup(
         url='https://github.com/kellen/urchin-tmdb/',
         packages=['urchin-tmdb'],
         license='Public Domain',
-        install_requires=['tmdb3', 'googlesearch']
+        install_requires=['tmdb3', 'requests']
         )
