@@ -10,12 +10,10 @@ import fnmatch
 import types
 import re
 import pprint
-
 import fuse
 
 # local
 import plugin, default, mp3, json
-
 from core import Stat, TemplateFS
 
 """urchin-fs TODO"""
@@ -38,7 +36,6 @@ class UrchinFSEntry(object):
 class ConfigurationError(fuse.FuseError):
     pass
 
-# TODO remove references to TemplateFS since it has some demo funcitonality we don't want
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
         self.plugin_search_paths = ["~/.urchinfs/plugins/"]
@@ -57,23 +54,20 @@ class UrchinFS(TemplateFS):
         self.parser.add_option(mountopt="watch", help="watch the source directory for changes?")
 
     def find_component_types(self):
-        logging.debug("finding component types")
+        logging.debug("finding component types...")
         components = dict()
         for (name, cls) in plugin.__dict__.items():
             if isinstance(cls, type) and hasattr(cls, 'component'):
                 components[cls.component] = cls
-        logging.debug("Found component types %s" % components)
+        logging.debug("found component types %s" % components)
         return components
 
     plugin_main_module = "__init__"
     def load_plugins(self):
-        logging.debug("loading plugins")
+        """Load default plugins and plugins found in `plugin_search_paths`"""
+        logging.debug("loading plugins...")
         # roughly like https://lkubuntu.wordpress.com/2012/10/02/writing-a-python-plugin-api/
-        plugins = {
-                "mp3": mp3,
-                "default": default,
-                "json": json
-                }
+        plugins = {"mp3": mp3, "default": default, "json": json }
         logging.debug("loaded default plugins")
         # FIXME TEST THIS
         for plugin_path in self.plugin_search_paths:
@@ -86,13 +80,15 @@ class UrchinFS(TemplateFS):
                             info = imp.find_module("__init__", [location])
                             # FIXME this seems wrong
                             plugins[name] = imp.load_module(plugin_main_module, info)
+                            logging.debug("found plugin module '%s'" % name)
                         except ImportError:
                             logging.warning("plugin module '%s' has no '%s'" % (name, plugin_main_module))
-        logging.debug("found plugins:\n%s" % pprint.pformat(plugins))
+        logging.debug("loaded plugins:\n%s" % pprint.pformat(plugins))
         return plugins
 
     def find_plugin_components(self, plugins):
-        logging.debug("loading plugin components")
+        """Find all named plugin classes and sort them by the command-line parameter for which they are valid"""
+        logging.debug("loading plugin components...")
         # find all named plugin classes
         named = []
         for plugin in plugins.values():
@@ -102,73 +98,60 @@ class UrchinFS(TemplateFS):
         # sort by type
         plugin_components = dict()
         for component_name,component_cls in self.component_types.iteritems():
-            # fuck duck typing
-            plugin_components[component_name] = {cls.name: cls for cls in named if issubclass(cls, component_cls)}
-            #logging.debug("finding components of type %s (%s)" % (component_name, component_cls))
-            #plugin_components[component_name] = dict()
-            #for cls in named:
-            #    #logging.debug("testing class %s" % cls)
-            #    if issubclass(cls, component_cls):
-            #        #logging.debug("class %s is of type %s" % (cls, component_cls))
-            #        plugin_components[component_name][cls.name] = cls
-        logging.debug("found plugin components:\n%s" % pprint.pformat(plugin_components))
+            plugin_components[component_name] = {cls.name: cls for cls in named if issubclass(cls, component_cls)} # fuck duck typing
+        logging.debug("loaded plugin components:\n%s" % pprint.pformat(plugin_components))
         return plugin_components
 
+    def configure_components(self, option_set, plugin_components):
+        logging.debug("configuring components for option_set %s..." % option_set)
+        # each "option set" describes the configuration of a specific source directory/way of formatting
+        plugin_config = {"indexer": None, "matcher": default.SelfMetadataMatcher, "extractor": None,
+                "merger": default.DefaultMerger, "formatter":  default.DefaultFormatter}
+        for plugin_key in self.plugin_keys:
+            if plugin_key in option_set:
+                plugin_short_name = option_set[plugin_key]
+                if plugin_short_name in plugin_components[plugin_key]:
+                    plugin_config[plugin_key] = plugin_components[plugin_key][plugin_short_name]
+                else:
+                    logging.debug("could not find plugin '%s'" % plugin_short_name)
+                    raise ConfigurationError("Could not find specified plugin '%s' for %s component" % (plugin_short_name, plugin_key))
+        # ensure all components are defined
+        for k,v in plugin_config.iteritems():
+            if not v:
+                raise ConfigurationError("No component specified for '%s'" % k)
+
+        logging.debug("using plugin_config:\n%s" % pprint.pformat(plugin_config))
+        components = {k: cls(config) for k,cls in plugin_config.iteritems()}
+
+    def make_entries(self, components, item):
+        metadata_sources = components["matcher"].match(item)
+        metadata = {md_src: components["extractor"].extract(md_src) for md_src in metadata_sources}
+        combined = components["merger"].merge(metadata)
+        formatted_names = components["formatter"].format(item, combined)
+
     def fsinit(self):
+        logging.debug("initializing filesystem...")
         try:
-            logging.debug("initializing filesystem")
             logging.debug("Option arguments: " + str(self.cmdline[0]))
             logging.debug("Nonoption arguments: " + str(self.cmdline[1]))
+            plugin_components = self.find_plugin_components(self.load_plugins())
 
-            plugins = self.load_plugins()
-            plugin_components = self.find_plugin_components(plugins)
-
-            #from_cmdline = dict()
-            #for key in self.plugin_keys:
-            #    if hasattr(self.cmdline[0], key):
-            #        from_cmdline[key] = getattr(self.cmdline[0],key)
+            # FIXME rework
             from_cmdline = {key: getattr(self.cmdline[0], key) for key in self.plugin_keys if hasattr(self.cmdline[0], key)}
-
-            logging.debug("from_cmdline: %s" % from_cmdline)
+            from_cmdline["source"] = self.cmdline[0].source
             options = [from_cmdline]
+            logging.debug("from_cmdline: %s" % from_cmdline)
+
             for option_set in options:
                 config = dict() # FIXME which options should be here?
-                # each "option set" describes the configuration of a specific source directory/way of formatting
-                plugin_config = {
-                        "indexer": None,
-                        "matcher": default.SelfMetadataMatcher,
-                        "extractor": None,
-                        "merger": default.DefaultMerger,
-                        "formatter":  default.DefaultFormatter
-                        }
-                logging.debug("option_set: %s" % option_set)
-                # FIXME THROW ERROR ON NOT FOUND
-                for plugin_key in self.plugin_keys:
-                    logging.debug("key: %s" % plugin_key)
-                    if plugin_key in option_set:
-                        logging.debug("in option set: %s" % plugin_key)
-                        plugin_short_name = option_set[plugin_key]
-                        logging.debug("short name: %s" % plugin_short_name)
-
-                        if plugin_short_name in plugin_components[plugin_key]:
-                            plugin_config[plugin_key] = plugin_components[plugin_key][plugin_short_name]
-                            logging.debug("plugin_config now:\n%s" % pprint.pformat(plugin_config))
-                        else:
-                            logging.debug("could not find plugin '%s'" % plugin_short_name)
-                            raise ConfigurationError("Could not find specified plugin '%s' for %s component" % (plugin_short_name, plugin_key))
-                logging.debug("using plugin_config:\n%s" % pprint.pformat(plugin_config))
-                for k,v in plugin_config.iteritems():
-                    if not v:
-                        raise ConfigurationError("No component specified for '%s'" % k)
-                components = {k: cls for k,cls in plugin_config.iteritems()}
+                components = configure_components(option_set, plugin_components)
+                entries = {item: make_entries(components, item) for item in components["indexer"].index(option_set["source"]) }
         except Exception, e:
-            #
             # FIXME Fatal errors should be resolved before init() (or potentially even main()) is called
             # FIXME so.... perhaps do our own options parsing so we can load all the plugins before we get to here.
-            #
-            # Errors in fsinit() go back via FUSE so they won't bubble up properly.
-            # Assume any error here to be fatal
             logging.exception("Failed to initialize filesystem.")
+            raise e
+        logging.debug("initialized filesystem")
 
 def main():
     # FIXME this usage sucks

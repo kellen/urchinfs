@@ -16,13 +16,13 @@ class DefaultJsonDirectoryIndexer(AbstractDirectoryIndexer):
     """Simple item matcher which returns directories containing a file "metadata.json" """
     name = "json"
     def __init__(self, config):
-        super().__init__(self, config, DEFAULT_JSON_GLOB)
+        super(DefaultJsonDirectoryIndexer, self).__init__(config, DEFAULT_JSON_GLOB)
 
 class DefaultJsonFileMetadataMatcher(AbstractFileMetadataMatcher):
     name = "json"
     """Simple metadata matcher which returns the "metadata.json" file as its metadata source"""
     def __init__(self, config):
-        super().__init__(self, config, DEFAULT_JSON_GLOB)
+        super(DefaultJsonFileMetadataMatcher, self).__init__(config, DEFAULT_JSON_GLOB)
 
 class JsonMetadataExtractor(MetadataExtractor):
     name = "json"

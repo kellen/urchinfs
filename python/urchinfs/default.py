@@ -8,11 +8,15 @@ from plugin import MetadataMatcher, MetadataMerger, Formatter
 class SelfMetadataMatcher(MetadataMatcher):
     """Minimal matcher which returns the item path"""
     name = "default"
+    def __init__(self, config):
+        pass
     def match(self, path):
         return path
 
 class DefaultMerger(MetadataMerger):
     name = "default"
+    def __init__(self, config):
+        pass
     def merge(self, metadata):
         merged = dict()
         for d in metadata:
@@ -26,6 +30,8 @@ class DefaultMerger(MetadataMerger):
 class DefaultFormatter(Formatter):
     """Default formatter which returns the original item file/directory name"""
     name = "default"
+    def __init__(self, config):
+        pass
     def format(self, original_name, metadata):
         return original_name
 

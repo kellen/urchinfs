@@ -13,17 +13,17 @@ MP3_GLOB = "*.mp3"
 class Mp3DirectoryIndexer(AbstractDirectoryIndexer):
     name = "mp3"
     def __init__(self, config):
-        super().__init__(self, config, MP3_GLOB)
+        super(Mp3DirectoryIndexer, self).__init__(config, MP3_GLOB)
 
 class Mp3FileIndexer(AbstractFileIndexer):
     name = "mp3-file"
     def __init__(self, config):
-        super().__init__(self, config, MP3_GLOB)
+        super(Mp3FileIndexer, self).__init__(config, MP3_GLOB)
 
 class Mp3FileMetadataMatcher(AbstractFileMetadataMatcher):
     name = "mp3"
     def __init__(self, config):
-        super().__init__(self, config, MP3_GLOB)
+        super(Mp3FileMetadataMatcher, self).__init__(config, MP3_GLOB)
 
 class Mp3MetadataExtractor(MetadataExtractor):
     name = "mp3"
@@ -44,11 +44,15 @@ class Mp3AlbumMetadataMerger(MetadataMerger):
 
 class Mp3DirectoryFormatter(Formatter):
     name = "mp3"
+    def __init__(self, config):
+        pass
     def format(self, original_name, metadata):
         return original_name
 
 class Mp3FileFormatter(Formatter):
     name = "mp3-file"
+    def __init__(self, config):
+        pass
     def format(self, original_name, metadata):
         return original_name
 
