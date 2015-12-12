@@ -11,6 +11,8 @@ import pprint
 import requests
 import urllib
 import readline
+from locales import get_locale
+import requests
 
 from tmdb3 import set_key, searchMovie, Movie
 from googlesearch import GoogleSearch
@@ -48,42 +50,33 @@ class MovieFetcher(object):
     tmdb_url = "http://api.themoviedb.org/3/"
 
     def __init__(self):
-        api_key = None
+        self.api_key = None
         api_key_path = os.path.expanduser("~/.urchin/api_key")
         with open(api_key_path, 'r') as api_key_file:
-            api_key = api_key_file.read().strip()
-            set_key(api_key)
+            self.api_key = api_key_file.read().strip()
     def clean(self, query):
         query = query.replace(".", " ")
         while True:
             subbed = self.cleanup_pattern.sub(" ", query)
-            if subbed != query:
-                query = subbed
-            else:
+            if subbed == query:
                 break
+            query = subbed
         return query.strip()
     def search(self, query):
         for movie in searchMovie(cleaned):
             print movie
-    """
     def tmdb_from_imdb(self, id):
-        url = 'movie/{0}'.format(id),
-        language=self._locale.language
-        kwargs['api_key'] = self.api_key
-        self._url = url.lstrip('/')
-        self._kwargs = dict([(kwa, kwv) for kwa, kwv in kwargs.items() if kwv is not None])
-
         locale = get_locale()
-        kwargs = {}
-        for k, v in self._kwargs.items():
-            kwargs[k] = locale.encode(v)
-        url = '{0}{1}?{2}'.format(self.tmdb_url, self._url, urlencode(kwargs))
-
-        urllib2.Request.__init__(self, url)
-        self.add_header('Accept', 'application/json')
-        self.lifetime = 3600  # 1hr
-        
-    """
+        params = {'api_key': self.api_key, 'language': locale.language}
+        r = requests.get(
+            '{0}{1}?{2}'.format(
+                self.tmdb_url, 
+                'movie/{0}'.format(id), 
+                urlencode({k: locale.encode(v) for k,v in params.items()})
+            )
+        )
+        pprint.pprint(r.json())
+        #self.add_header('Accept', 'application/json')
     def imdb_suggest(self, query):
         excludes = [
                     #"Parents Guide", "Plot Summary", "Release Info", "Quotes", "Taglines", "FAQ", "Trivia", "News",
