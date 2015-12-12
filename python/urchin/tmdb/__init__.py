@@ -11,7 +11,6 @@ import pprint
 import requests
 import urllib
 import readline
-from locales import get_locale
 import requests
 
 from tmdb3 import set_key, searchMovie, Movie
@@ -66,13 +65,12 @@ class MovieFetcher(object):
         for movie in searchMovie(cleaned):
             print movie
     def tmdb_from_imdb(self, id):
-        locale = get_locale()
-        params = {'api_key': self.api_key, 'language': locale.language}
+        params = {'api_key': self.api_key}
         r = requests.get(
             '{0}{1}?{2}'.format(
                 self.tmdb_url, 
                 'movie/{0}'.format(id), 
-                urlencode({k: locale.encode(v) for k,v in params.items()})
+                urlencode(items)
             )
         )
         pprint.pprint(r.json())
