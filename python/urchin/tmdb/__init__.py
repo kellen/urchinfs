@@ -12,6 +12,7 @@ import requests
 import urllib
 import readline
 import requests
+from urllib import urlencode
 
 from tmdb3 import set_key, searchMovie, Movie
 from googlesearch import GoogleSearch
@@ -68,13 +69,15 @@ class MovieFetcher(object):
         params = {'api_key': self.api_key}
         r = requests.get(
             '{0}{1}?{2}'.format(
-                self.tmdb_url, 
-                'movie/{0}'.format(id), 
-                urlencode(items)
+                self.tmdb_url,
+                'movie/{0}'.format(id),
+                urlencode(params)
             )
         )
-        pprint.pprint(r.json())
-        #self.add_header('Accept', 'application/json')
+        if r.status_code == 200:
+            pprint.pprint(r.json())
+            return r.json()
+        return None
     def imdb_suggest(self, query):
         excludes = [
                     #"Parents Guide", "Plot Summary", "Release Info", "Quotes", "Taglines", "FAQ", "Trivia", "News",
@@ -130,8 +133,8 @@ class MovieFetcher(object):
                     return
                 chosen = imdb_suggestions[choice]
                 pprint.pprint(chosen)
-                movie = Movie.fromIMDB(chosen["id"])
-                #movie = self.tmdb_from_imdb(chosen["id"])
+                #movie = Movie.fromIMDB(chosen["id"])
+                movie = self.tmdb_from_imdb(chosen["id"])
                 pprint.pprint(movie)
                 return
 def main():
