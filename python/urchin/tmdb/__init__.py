@@ -15,7 +15,7 @@ import requests
 import codecs
 import urllib
 
-from tmdb3 import set_key, searchMovie, Movie
+#from tmdb3 import set_key, searchMovie, Movie
 from googlesearch import GoogleSearch
 
 logging.basicConfig(level=logging.ERROR,)
@@ -49,6 +49,10 @@ class MovieFetcher(object):
     imdb_pattern = re.compile(r"https?://(?:www\.)?imdb.com/title/(tt[0-9]+)/?$", re.IGNORECASE)
 
     tmdb_url = "http://api.themoviedb.org/3/"
+    tmdb_files = {
+        "movie.json": '{0}movie/{1}',
+        "credits.json": '{0}movie/{1}/credits'
+    }
 
     def __init__(self):
         self.api_key = None
@@ -63,16 +67,9 @@ class MovieFetcher(object):
                 break
             query = subbed
         return query.strip()
-    def search(self, query):
-        for movie in searchMovie(cleaned):
-            print movie
     def tmdb_from_imdb(self, id):
         params = {'api_key': self.api_key}
-        tmdb_files = {
-            "movie.json": '{0}movie/{1}'.format(self.tmdb_url, id),
-            "credits.json": '{0}movie/{1}/credits'.format(self.tmdb_url, id)
-        }
-
+        tmdb_files = {k: v.format(self.tmdb_url, id) for k,v in self.tmdb_files.items()}
         output = dict()
         for file,url in tmdb_files.items():
             r = requests.get('{0}?{1}'.format(url, urllib.urlencode(params)))
@@ -96,30 +93,38 @@ class MovieFetcher(object):
                 suggestions.append({"id": m.group(1), "title": hit["titleNoFormatting"].replace(' - IMDb', '')})
         logging.debug("google found %d results with query: %s" % (len(suggestions), google_query))
         return suggestions
-    def interact(self, path):
+    def interact(self, path, overwrite=False):
+        basename = os.path.basename(path)
+        print '-'*80
+        #print basename, '-'*(80-1-len(basename))
         if not os.access(path, os.W_OK):
             print "%s is not writable, skipping..." % path
             return
-        #if ... # FIXME skip if already exists files
-        query = self.clean(os.path.basename(path))
+        if not overwrite:
+            missing_files = set(self.tmdb_files.keys()) - set(os.listdir(path))
+            if not missing_files:
+                print "'%s' already contains all expected metadata files, skipping. Use `-o` to overwrite..." % basename
+                return
+        query = self.clean(basename)
         while True:
             logging.debug("current query: %s" % query)
             imdb_suggestions = self.imdb_suggest(query)
             if not imdb_suggestions:
                 try:
-                    query = prompt_with_input("No suggestions found, edit query (Ctrl-C to skip): ", query)
+                    print "No suggestions found for '%s'" % basename
+                    query = prompt_with_input("Edit query or Ctrl-C to skip: ", query)
                 except KeyboardInterrupt:
                     print "skipping..."
                     return
             else:
                 num_suggestions = len(imdb_suggestions)
-                print "Found %d suggestions:" % num_suggestions
+                print "Found %d suggestion%s for '%s':" % (num_suggestions, "s" if num_suggestions > 1 else "", basename)
                 for idx, suggestion in enumerate(imdb_suggestions):
                     print "  [%d] %s" % ( idx, suggestion["title"])
                 choice = 0
                 edited_query = False
                 while True:
-                    print "Choose number, S to skip, or E to edit query [0]:"
+                    print ("Choose number," if num_suggestions > 1 else "Press enter or 0 to accept,"),  "S to skip, or E to edit query [0]:",
                     choice_str = raw_input()
                     if not choice_str:
                         break
@@ -153,11 +158,10 @@ class MovieFetcher(object):
                 if edited_query:
                     continue
                 chosen = imdb_suggestions[choice]
-                pprint.pprint(chosen)
                 movie_files = self.tmdb_from_imdb(chosen["id"])
                 for filename,contents in movie_files.items():
                     dest = os.path.join(path,filename)
-                    if os.path.exists(dest) and os.path.isfile(dest):
+                    if not overwrite and os.path.exists(dest) and os.path.isfile(dest):
                         skip_file = False
                         choice_str = ""
                         try:
@@ -183,23 +187,24 @@ class MovieFetcher(object):
                 return
 def main():
     try:
-        try:
-            parser = argparse.ArgumentParser(description='searches TMDB and outputs json metadata files')
-            parser.add_argument('dir', nargs='*', help='directories to process; if omitted the current directory is assumed')
-            args = vars(parser.parse_args())
-        except argparse.ArgumentError, msg:
-             raise Usage(msg)
+        parser = argparse.ArgumentParser(description='searches TMDB and outputs json metadata files')
+        parser.add_argument('-o', '--overwrite', action='store_true', help='overwrite existing metadata files')
+        parser.add_argument('dir', nargs='+', help='directories to process; if omitted the current directory is assumed')
+        args = vars(parser.parse_args())
+        #try:
+        #except argparse.ArgumentError, msg:
+        #     raise Usage(msg)
 
         fetcher = MovieFetcher()
-        if not args["dir"]:
-            args["dir"] = ['.']
-        for dir in args["dir"]:
-            path = os.path.abspath(dir)
-            path = path[:-1] if path.endswith('/') else path
-            if os.path.isdir(path):
-                fetcher.interact(path)
-            else:
-                logging.error("path is not a directory, ignoring: %s" % path)
+        if args["dir"]:
+            for dir in args["dir"]:
+                path = os.path.abspath(dir)
+                path = path[:-1] if path.endswith('/') else path
+                if os.path.isdir(path):
+                    fetcher.interact(path, args["overwrite"])
+                else:
+                    logging.error("path is not a directory, ignoring: %s" % path)
+            print "Done!"
     except Usage, err:
         return 2
 
