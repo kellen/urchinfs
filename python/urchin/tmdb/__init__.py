@@ -12,7 +12,8 @@ import requests
 import urllib
 import readline
 import requests
-from urllib import urlencode
+import codecs
+import urllib
 
 from tmdb3 import set_key, searchMovie, Movie
 from googlesearch import GoogleSearch
@@ -67,17 +68,19 @@ class MovieFetcher(object):
             print movie
     def tmdb_from_imdb(self, id):
         params = {'api_key': self.api_key}
-        r = requests.get(
-            '{0}{1}?{2}'.format(
-                self.tmdb_url,
-                'movie/{0}'.format(id),
-                urlencode(params)
-            )
-        )
-        if r.status_code == 200:
-            pprint.pprint(r.json())
-            return r.json()
-        return None
+        tmdb_files = {
+            "movie.json": '{0}movie/{1}'.format(self.tmdb_url, id),
+            "credits.json": '{0}movie/{1}/credits'.format(self.tmdb_url, id)
+        }
+
+        output = dict()
+        for file,url in tmdb_files.items():
+            r = requests.get('{0}?{1}'.format(url, urllib.urlencode(params)))
+            if r.status_code == 200:
+                output[file] = r.text
+            else:
+                print "failed to fetch %s from %s, ignoring..." % (file, url)
+        return output
     def imdb_suggest(self, query):
         excludes = [
                     #"Parents Guide", "Plot Summary", "Release Info", "Quotes", "Taglines", "FAQ", "Trivia", "News",
@@ -94,6 +97,10 @@ class MovieFetcher(object):
         logging.debug("google found %d results with query: %s" % (len(suggestions), google_query))
         return suggestions
     def interact(self, path):
+        if not os.access(path, os.W_OK):
+            print "%s is not writable, skipping..." % path
+            return
+        #if ... # FIXME skip if already exists files
         query = self.clean(os.path.basename(path))
         while True:
             logging.debug("current query: %s" % query)
@@ -133,9 +140,32 @@ class MovieFetcher(object):
                     return
                 chosen = imdb_suggestions[choice]
                 pprint.pprint(chosen)
-                #movie = Movie.fromIMDB(chosen["id"])
-                movie = self.tmdb_from_imdb(chosen["id"])
-                pprint.pprint(movie)
+                movie_files = self.tmdb_from_imdb(chosen["id"])
+                for filename,contents in movie_files.items():
+                    dest = os.path.join(path,filename)
+                    if os.path.exists(dest) and os.path.isfile(dest):
+                        skip_file = False
+                        choice_str = ""
+                        try:
+                            while True:
+                                print "%s already exists, overwrite? Y/N or Ctrl-C to skip this file. [Y]" % dest
+                                choice_str = raw_input()
+                                if not choice_str or choice_str == "Y":
+                                    break
+                                elif choice_str == "N":
+                                    skip_file = True
+                                else:
+                                    "You may only choose Y or N or press Ctrl-C to skip this file"
+                        except KeyboardInterrupt:
+                            skip_file = True
+                        if skip_file:
+                            print "skipping file %s..." % dest
+                            continue
+                    try:
+                        with codecs.open(dest, 'w', 'utf-8') as file:
+                            file.write(contents)
+                    except IOError:
+                        print "%s is not writable, skipping..." % dest
                 return
 def main():
     try:
