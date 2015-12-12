@@ -117,17 +117,29 @@ class MovieFetcher(object):
                 for idx, suggestion in enumerate(imdb_suggestions):
                     print "  [%d] %s" % ( idx, suggestion["title"])
                 choice = 0
-                try:
-                    while True:
-                        print "Choose number or Ctrl-C to skip [0]:"
-                        choice_str = raw_input()
-                        if not choice_str:
-                            break
+                edited_query = False
+                while True:
+                    print "Choose number, S to skip, or E to edit query [0]:"
+                    choice_str = raw_input()
+                    if not choice_str:
+                        break
+                    elif choice_str == 'E':
                         try:
-                            choice = int(choice_str)
-                        except ValueError:
-                            print "Choice must be a valid number."
-                            continue
+                            query = prompt_with_input("Edit query (Ctrl-C to skip): ", query)
+                            edited_query = True
+                            break
+                        except KeyboardInterrupt:
+                            print "skipping..."
+                            return
+                    elif choice_str == 'S':
+                        print "skipping..."
+                        return
+                    try:
+                        choice = int(choice_str)
+                    except ValueError:
+                        print "Choice must be a valid number."
+                        continue
+                    try:
                         if choice < 0 or choice >= num_suggestions:
                             if num_suggestions > 0:
                                 print "Choice must be between %d and %d" % (0, num_suggestions)
@@ -135,9 +147,11 @@ class MovieFetcher(object):
                                 print "You may only choose 0 or press Ctrl-C to skip"
                             continue
                         break
-                except KeyboardInterrupt:
-                    print "skipping..."
-                    return
+                    except KeyboardInterrupt:
+                        print "skipping..."
+                        return
+                if edited_query:
+                    continue
                 chosen = imdb_suggestions[choice]
                 pprint.pprint(chosen)
                 movie_files = self.tmdb_from_imdb(chosen["id"])
