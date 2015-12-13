@@ -1,3 +1,4 @@
 mountpoint
 *.pyc
 LOG
+test

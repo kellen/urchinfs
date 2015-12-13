@@ -25,16 +25,15 @@ logging.basicConfig(level=logging.DEBUG,)
 #logging.basicConfig(level=logging.ERROR,)
 fuse.fuse_python_api = (0, 2)
 
+class ConfigurationError(fuse.FuseError):
+    pass
+
 class UrchinFSEntry(object):
     def __init__(self, path, metadata_paths, metadata, formatted_names):
         self.path = path
         self.metadata_paths = metadata_paths
         self.metadata = metadata
         self.formatted_names = formatted_names
-        #FIXME probably need to retain the matchers/extractors/formatters in order to update?
-
-class ConfigurationError(fuse.FuseError):
-    pass
 
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
@@ -102,7 +101,7 @@ class UrchinFS(TemplateFS):
         logging.debug("loaded plugin components:\n%s" % pprint.pformat(plugin_components))
         return plugin_components
 
-    def configure_components(self, option_set, plugin_components):
+    def configure_components(self, option_set, config, plugin_components):
         logging.debug("configuring components for option_set %s..." % option_set)
         # each "option set" describes the configuration of a specific source directory/way of formatting
         plugin_config = {"indexer": None, "matcher": default.SelfMetadataMatcher, "extractor": None,
@@ -119,33 +118,52 @@ class UrchinFS(TemplateFS):
         for k,v in plugin_config.iteritems():
             if not v:
                 raise ConfigurationError("No component specified for '%s'" % k)
-
         logging.debug("using plugin_config:\n%s" % pprint.pformat(plugin_config))
-        components = {k: cls(config) for k,cls in plugin_config.iteritems()}
+        return {k: cls(config) for k,cls in plugin_config.iteritems()}
 
-    def make_entries(self, components, item):
-        metadata_sources = components["matcher"].match(item)
-        metadata = {md_src: components["extractor"].extract(md_src) for md_src in metadata_sources}
-        combined = components["merger"].merge(metadata)
-        formatted_names = components["formatter"].format(item, combined)
+    def make_entries(self, components, path):
+        entries = []
+        indexed = components["indexer"].index(path)
+        logging.debug("indexed: %s" % pprint.pformat(indexed))
+        for item in indexed:
+            sources = components["matcher"].match(item)
+            logging.debug("sources: %s" % pprint.pformat(sources))
+            metadata = {source: components["extractor"].extract(source) for source in sources}
+            logging.debug("metadata: %s..." % pprint.pformat(metadata)[:500])
+            combined = components["merger"].merge(metadata)
+            formatted_names = components["formatter"].format(item, combined)
+            logging.debug("formatted: %s..." % pprint.pformat(formatted_names))
+            entries.append(UrchinFSEntry(path, sources, combined, formatted_names))
+        logging.debug("entries: %s" % pprint.pformat(entries))
+        return entries
 
     def fsinit(self):
         logging.debug("initializing filesystem...")
         try:
-            logging.debug("Option arguments: " + str(self.cmdline[0]))
+            options = self.cmdline[0]
+            logging.debug("Option arguments: " + str(options))
             logging.debug("Nonoption arguments: " + str(self.cmdline[1]))
             plugin_components = self.find_plugin_components(self.load_plugins())
 
-            # FIXME rework
-            from_cmdline = {key: getattr(self.cmdline[0], key) for key in self.plugin_keys if hasattr(self.cmdline[0], key)}
-            from_cmdline["source"] = self.cmdline[0].source
-            options = [from_cmdline]
+            # FIXME rework this so we don't have to fetch from cmdline
+            from_cmdline = {key: getattr(options, key) for key in self.plugin_keys if hasattr(options, key)}
+            from_cmdline["source"] = options.source
+            option_sets = [from_cmdline]
             logging.debug("from_cmdline: %s" % from_cmdline)
 
-            for option_set in options:
+            self.mount_configurations = {}
+            for option_set in option_sets:
                 config = dict() # FIXME which options should be here?
-                components = configure_components(option_set, plugin_components)
-                entries = {item: make_entries(components, item) for item in components["indexer"].index(option_set["source"]) }
+                components = self.configure_components(option_set, config, plugin_components)
+                logging.debug("components: %s" % pprint.pformat(components))
+                entries = self.make_entries(components, option_set["source"])
+                self.mount_configurations[option_set["source"]] = {"config": config, "components": components, "entries": entries}
+            if options.watch:
+                pass
+                # FIXME add inotify support
+                #self.inotify_fd = inotifyx.init()
+                # FIXME add watches
+                # FIXME decide where to update things
         except Exception, e:
             # FIXME Fatal errors should be resolved before init() (or potentially even main()) is called
             # FIXME so.... perhaps do our own options parsing so we can load all the plugins before we get to here.
@@ -154,7 +172,7 @@ class UrchinFS(TemplateFS):
         logging.debug("initialized filesystem")
 
 def main():
-    # FIXME this usage sucks
+    # FIXME add useful usage description
     usage = """UrchinFS: A faceted-search FUSE file system.""" + fuse.Fuse.fusage
     server = UrchinFS(version="%prog " + fuse.__version__, usage=usage, dash_s_do='setsingle')
     server.parse(errex=1)
