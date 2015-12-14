@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
 import sys
 import os
 import stat
@@ -12,11 +13,23 @@ import re
 import pprint
 import fuse
 
-# local
-import plugin, default, mp3, json
-from core import Stat, TemplateFS
+import urchin.fs.plugin as plugin
+import urchin.fs.default as default
+import urchin.fs.mp3 as mp3
+import urchin.fs.json as json
+from urchin.fs.core import Stat, TemplateFS
 
-"""urchin-fs TODO"""
+"""
+urchin-fs TODO
+
+source-dir
+-> indexer -> items-to-index
+-> matcher -> metadata-sources-for-item
+-> extractor -> metadata-collections-for-item
+-> merger -> combined-metadata-for-item
+-> formatter -> names-for-item
+
+"""
 
 #LOG_FILENAME = "LOG"
 #logging.basicConfig(filename=LOG_FILENAME,level=logging.INFO,)

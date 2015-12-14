@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
 import os
 from fnmatch import fnmatch
 from mutagen.easyid3 import EasyID3
 
-from plugin import Formatter, MetadataExtractor, MetadataMerger
-from abstract import AbstractDirectoryIndexer, AbstractFileIndexer, AbstractFileMetadataMatcher
+from urchin.fs.plugin import Formatter, MetadataExtractor, MetadataMerger
+from urchin.fs.abstract import AbstractDirectoryIndexer, AbstractFileIndexer, AbstractFileMetadataMatcher
 
 MP3_GLOB = "*.mp3"
 

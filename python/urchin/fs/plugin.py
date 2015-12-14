@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
+
 """
 class Plugin(object):
     def __init__(self, item_matcher=None, metadata_matcher=SelfMetadataMatcher,

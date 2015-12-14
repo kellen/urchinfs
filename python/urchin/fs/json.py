@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
 import os
 import json
 import logging
 import types
 
-from plugin import MetadataExtractor
-from abstract import AbstractDirectoryIndexer, AbstractFileMetadataMatcher
+from urchin.fs.plugin import MetadataExtractor
+from urchin.fs.abstract import AbstractDirectoryIndexer, AbstractFileMetadataMatcher
 
 JSON_GLOB = "*.json"
+stringable_types = [str, unicode, int, long, float, bool, types.NoneType]
 
 class DefaultJsonDirectoryIndexer(AbstractDirectoryIndexer):
     """Simple item matcher which returns directories containing a json file """
@@ -31,16 +33,16 @@ class JsonMetadataExtractor(MetadataExtractor):
     Converts non-string keys and values to strings if straightforward.
     Values must be lists or single values, otherwise they are ignored.
     """
-    stringable_types = [str, unicode, int, long, float, bool, types.NoneType]
     def __init__(self, config):
         pass
     def extract(self, path):
         logging.debug("extracting metadata from '%s' as json" % path)
         md = dict()
         with open(path, 'r') as file:
+            print json
             source = json.load(file)
             if type(source) == dict:
-                for k,v in d.iteritems():
+                for k,v in source.iteritems():
                     if type(k) in stringable_types:
                         key = unicode(k)
                         md[key] = []
@@ -58,3 +60,4 @@ class JsonMetadataExtractor(MetadataExtractor):
                         logging.warning("Key [%s] not cleanly convertable to string, ignoring." % k)
             else:
                 logging.error("Found metadata in '%s', but could not parse file into a dict" % path)
+        return md

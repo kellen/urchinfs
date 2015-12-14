@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
 import os
 from fnmatch import fnmatch
-from plugin import MetadataMatcher, MetadataMerger, Formatter
+from urchin.fs.plugin import MetadataMatcher, MetadataMerger, Formatter
 
 class SelfMetadataMatcher(MetadataMatcher):
     """Minimal matcher which returns the item path"""
@@ -19,8 +20,14 @@ class DefaultMerger(MetadataMerger):
         pass
     def merge(self, metadata):
         merged = dict()
-        for d in metadata:
+        for source,d in metadata.iteritems():
             for k,v in d.iteritems():
+
+                # FIXME need to add v to a set
+                # FIXME dont forget to unpack lists!
+                # FIXME may need to modify the extractor to remap {id: value} values
+
+                
                 if k not in merged:
                     merged[k] = v
                 else:

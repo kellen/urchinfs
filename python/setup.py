@@ -9,7 +9,7 @@ setup(
         author='Kellen Dye',
         author_email='kellen@cretin.net',
         url='https://github.com/kellen/urchin-tmdb/',
-        packages=['urchin-tmdb'],
+        packages=['urchin'],
         license='Public Domain',
         install_requires=['tmdb3', 'googlesearch', 'requests']
         )

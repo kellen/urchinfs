@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from urchinfs import Formatter
+from __future__ import absolute_import
+from urchin.fs.plugin import Formatter
 
 # FIXME dunno wtf i was doing here, fix it later.
 class MovieFormatter(Formatter):

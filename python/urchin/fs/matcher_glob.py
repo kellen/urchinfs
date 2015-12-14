@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from urchinfs import Matcher
-
+from __future__ import absolute_import
+from urchin.fs.plugin import Matcher
 
 class GlobFileMatcher(Matcher):
     """Matches files with filenames matching a given glob"""

@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
 import os
 from fnmatch import fnmatch
-from plugin import Indexer, MetadataMatcher
+from urchin.fs.plugin import Indexer, MetadataMatcher
 
 class AbstractDirectoryIndexer(Indexer):
     """Recursively finds directories in path which have a child file which matches the glob"""
