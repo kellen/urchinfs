@@ -19,7 +19,6 @@ class DefaultMetadataMatcher(MetadataMatcher):
 class DefaultMerger(MetadataMerger):
     """
     Minimal merger which does as little as possible to the data.
-    In cases where the values for a key cannot be merged, the key is dropped
     """
     name = "default"
     def __init__(self, config):
