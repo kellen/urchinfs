@@ -31,5 +31,5 @@ class AbstractFileMetadataMatcher(MetadataMatcher):
         self.glob = glob
     def match(self, path):
         if os.path.isdir(path):
-            [os.path.join(path, x) for x in os.listdir(path) if fnmatch(x, self.glob)]
+            return [os.path.join(path, x) for x in os.listdir(path) if fnmatch(x, self.glob)]
         return []
