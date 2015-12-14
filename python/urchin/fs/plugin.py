@@ -5,7 +5,7 @@ from __future__ import absolute_import
 
 """
 class Plugin(object):
-    def __init__(self, item_matcher=None, metadata_matcher=SelfMetadataMatcher,
+    def __init__(self, item_matcher=None, metadata_matcher=DefaultMetadataMatcher,
             metadata_extractor=None, metadata_merger=None,
             formatter=G):
         pass
@@ -41,6 +41,18 @@ class MetadataExtractor(object):
         Takes a file path and returns a dict with string keys and sets of strings as values.
         metadata[key] = set(value1, value2)
         """
+        raise NotImplementedError()
+
+class MetadataMunger(object):
+    """
+    Metadata munger
+
+    Cleans up metadata by manipulating/removing values or adding/removing structure
+    """
+    component = "munger"
+    def __init__(self, config):
+        pass
+    def mung(self, metadata):
         raise NotImplementedError()
 
 class MetadataMerger(object):

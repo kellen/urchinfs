@@ -12,6 +12,7 @@ import types
 import re
 import pprint
 import fuse
+import imp
 
 import urchin.fs.plugin as plugin
 import urchin.fs.default as default
@@ -27,6 +28,7 @@ source-dir
 -> matcher -> metadata-sources-for-item
 -> extractor -> metadata-collections-for-item
 -> merger -> combined-metadata-for-item
+-> munger -> munged-metadata-collections-for-item
 -> formatter -> names-for-item
 
 """
@@ -50,17 +52,18 @@ class UrchinFSEntry(object):
 
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
-        self.plugin_search_paths = ["~/.urchinfs/plugins/"]
+        self.plugin_search_paths = ["~/.urchin/plugins/"]
         self.component_types = self.find_component_types()
         self.plugin_keys = self.component_types.keys()
 
         super(UrchinFS, self).__init__(*args, **kwargs)
-        # -o indexer=json,matcher=json,extractor=json,merger=default,formatter=default,source="../test",watch=true
+        # -o indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default,source="../test",watch=true
         self.parser.add_option(mountopt="source", help="source directory")
         self.parser.add_option(mountopt="indexer", help="indexer class")
         self.parser.add_option(mountopt="matcher", help="matcher class")
         self.parser.add_option(mountopt="extractor", help="extractor class")
         self.parser.add_option(mountopt="merger", help="merger class")
+        self.parser.add_option(mountopt="munger", help="munger class")
         self.parser.add_option(mountopt="formatter", help="formatter class")
         self.parser.add_option(mountopt="plugin", help="plugin class")
         self.parser.add_option(mountopt="watch", help="watch the source directory for changes?")
@@ -83,18 +86,25 @@ class UrchinFS(TemplateFS):
         logging.debug("loaded default plugins")
         # FIXME TEST THIS
         for plugin_path in self.plugin_search_paths:
+            plugin_path = os.path.abspath(os.path.expanduser(plugin_path))
             logging.debug("searching for plugins in %s" % plugin_path)
-            if os.path.exists(plugin_path) and os.path.isdir(plugin_path):
-                for name in os.listdir(plugin_path):
-                    path = os.path.join(plugin_path, name)
-                    if os.path.isdir(path) and "%s.py" % plugin_main_module in os.listdir(path):
-                        try:
-                            info = imp.find_module("__init__", [location])
-                            # FIXME this seems wrong
-                            plugins[name] = imp.load_module(plugin_main_module, info)
-                            logging.debug("found plugin module '%s'" % name)
-                        except ImportError:
-                            logging.warning("plugin module '%s' has no '%s'" % (name, plugin_main_module))
+            if not os.path.exists(plugin_path):
+                logging.debug("plugin search path does not exist: %s" % plugin_path)
+            else:
+                if not os.path.isdir(plugin_path):
+                    logging.debug("plugin search path is not a directory: %s" % plugin_path)
+                else:
+                    for name in os.listdir(plugin_path):
+                        path = os.path.join(plugin_path, name)
+                        if os.path.isdir(path) and "%s.py" % self.plugin_main_module in os.listdir(path):
+                            try:
+                                info = imp.find_module("__init__", [path])
+                                # FIXME this seems wrong
+                                plugins[name] = imp.load_module(self.plugin_main_module, info[0], info[1], info[2])
+                                logging.debug("found plugin module '%s'" % name)
+                                info[0].close()
+                            except ImportError:
+                                logging.warning("plugin module '%s' has no '%s'" % (name, plugin_main_module))
         logging.debug("loaded plugins:\n%s" % pprint.pformat(plugins))
         return plugins
 
@@ -117,8 +127,8 @@ class UrchinFS(TemplateFS):
     def configure_components(self, option_set, config, plugin_components):
         logging.debug("configuring components for option_set %s..." % option_set)
         # each "option set" describes the configuration of a specific source directory/way of formatting
-        plugin_config = {"indexer": None, "matcher": default.SelfMetadataMatcher, "extractor": None,
-                "merger": default.DefaultMerger, "formatter":  default.DefaultFormatter}
+        plugin_config = {"indexer": None, "matcher": default.DefaultMetadataMatcher, "extractor": None,
+                "merger": default.DefaultMerger, "munger": default.DefaultMunger, "formatter":  default.DefaultFormatter}
         for plugin_key in self.plugin_keys:
             if plugin_key in option_set:
                 plugin_short_name = option_set[plugin_key]
@@ -141,12 +151,15 @@ class UrchinFS(TemplateFS):
         for item in indexed:
             sources = components["matcher"].match(item)
             logging.debug("sources: %s" % pprint.pformat(sources))
-            metadata = {source: components["extractor"].extract(source) for source in sources}
-            logging.debug("metadata: %s..." % pprint.pformat(metadata)[:500])
-            combined = components["merger"].merge(metadata)
-            formatted_names = components["formatter"].format(item, combined)
+            raw_metadata = {source: components["extractor"].extract(source) for source in sources}
+            logging.debug("raw metadata: %s..." % pprint.pformat(raw_metadata)[:500])
+            combined_metadata = components["merger"].merge(raw_metadata)
+            logging.debug("combined metadata: %s..." % pprint.pformat(combined_metadata)[:500])
+            metadata = components["munger"].mung(combined_metadata)
+            logging.debug("munged metadata: %s..." % pprint.pformat(metadata)[:500])
+            formatted_names = components["formatter"].format(item, metadata)
             logging.debug("formatted: %s..." % pprint.pformat(formatted_names))
-            entries.append(UrchinFSEntry(path, sources, combined, formatted_names))
+            entries.append(UrchinFSEntry(path, sources, metadata, formatted_names))
         logging.debug("entries: %s" % pprint.pformat(entries))
         return entries
 
@@ -177,6 +190,7 @@ class UrchinFS(TemplateFS):
                 #self.inotify_fd = inotifyx.init()
                 # FIXME add watches
                 # FIXME decide where to update things
+                # FIXME check the system inotify limit and warn if watches exceed
         except Exception, e:
             # FIXME Fatal errors should be resolved before init() (or potentially even main()) is called
             # FIXME so.... perhaps do our own options parsing so we can load all the plugins before we get to here.

@@ -4,9 +4,11 @@
 from __future__ import absolute_import
 import os
 from fnmatch import fnmatch
-from urchin.fs.plugin import MetadataMatcher, MetadataMerger, Formatter
+import collections
 
-class SelfMetadataMatcher(MetadataMatcher):
+from urchin.fs.plugin import MetadataMatcher, MetadataMunger, MetadataMerger, Formatter
+
+class DefaultMetadataMatcher(MetadataMatcher):
     """Minimal matcher which returns the item path"""
     name = "default"
     def __init__(self, config):
@@ -15,6 +17,10 @@ class SelfMetadataMatcher(MetadataMatcher):
         return path
 
 class DefaultMerger(MetadataMerger):
+    """
+    Minimal merger which does as little as possible to the data.
+    In cases where the values for a key cannot be merged, the key is dropped
+    """
     name = "default"
     def __init__(self, config):
         pass
@@ -22,17 +28,33 @@ class DefaultMerger(MetadataMerger):
         merged = dict()
         for source,d in metadata.iteritems():
             for k,v in d.iteritems():
-
-                # FIXME need to add v to a set
-                # FIXME dont forget to unpack lists!
-                # FIXME may need to modify the extractor to remap {id: value} values
-
-                
                 if k not in merged:
                     merged[k] = v
                 else:
-                    merged[k].update(v)
+                    cur_val_type = type(merged[k])
+                    val_type = type(v)
+                    if cur_val_type == set and isinstance(v, collections.Hashable):
+                        merged[k].update(v)
+                    elif cur_val_type == tuple and val_type == tuple:
+                        # i guess?
+                        merged[k] = merged[k] + val_type
+                    elif cur_val_type == list and val_type == list:
+                        merged[k].extend(v)
+                    elif cur_val_type == list:
+                        merged[k].add(v)
+                    else:
+                        merged[k] = [merged[k], v]
+                    #else:
+                    #    logger.debug("could not merge key '%s' value types '%s' and '%s'" % (k, cur_val_type, val_type))
         return merged
+
+class DefaultMunger(MetadataMunger):
+    """Minimal munger which does nothing to the data"""
+    name = "default"
+    def __init__(self, config):
+        pass
+    def mung(self, metadata):
+        return metadata
 
 class DefaultFormatter(Formatter):
     """Default formatter which returns the original item file/directory name"""

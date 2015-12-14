@@ -25,13 +25,26 @@ class DefaultJsonFileMetadataMatcher(AbstractFileMetadataMatcher):
     def __init__(self, config):
         super(DefaultJsonFileMetadataMatcher, self).__init__(config, JSON_GLOB)
 
+class BasicJsonMetadataExtractor(MetadataExtractor):
+    name = "json-basic"
+    """
+    Basic JSON metadata extractor.
+
+    Returns the unaltered result of json.load()
+    """
+    def __init__(self, config):
+        pass
+    def extract(self, path):
+        with open(path, 'r') as file:
+            return json.load(file)
+
 class JsonMetadataExtractor(MetadataExtractor):
     name = "json"
     """
-    Abstract JSON metadata extractor.
+    JSON metadata extractor.
 
     Converts non-string keys and values to strings if straightforward.
-    Values must be lists or single values, otherwise they are ignored.
+    Values are single values or lists of single values, otherwise they are ignored.
     """
     def __init__(self, config):
         pass
@@ -39,7 +52,6 @@ class JsonMetadataExtractor(MetadataExtractor):
         logging.debug("extracting metadata from '%s' as json" % path)
         md = dict()
         with open(path, 'r') as file:
-            print json
             source = json.load(file)
             if type(source) == dict:
                 for k,v in source.iteritems():
