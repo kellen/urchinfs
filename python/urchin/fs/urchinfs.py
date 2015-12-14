@@ -18,6 +18,7 @@ import urchin.fs.plugin as plugin
 import urchin.fs.default as default
 import urchin.fs.mp3 as mp3
 import urchin.fs.json as json
+import urchin.fs.tmdb as tmdb
 from urchin.fs.core import Stat, TemplateFS
 
 """
@@ -54,7 +55,9 @@ class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
         self.plugin_search_paths = ["~/.urchin/plugins/"]
         self.component_types = self.find_component_types()
-        self.plugin_keys = self.component_types.keys()
+        self.component_keys = self.component_types.keys()
+        self.plugins = self.load_plugins()
+        self.plugin_components = self.find_plugin_components()
 
         super(UrchinFS, self).__init__(*args, **kwargs)
         # -o indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default,source="../test",watch=true
@@ -82,9 +85,8 @@ class UrchinFS(TemplateFS):
         """Load default plugins and plugins found in `plugin_search_paths`"""
         logging.debug("loading plugins...")
         # roughly like https://lkubuntu.wordpress.com/2012/10/02/writing-a-python-plugin-api/
-        plugins = {"mp3": mp3, "default": default, "json": json }
+        plugins = {"mp3": mp3, "default": default, "json": json, "tmdb": tmdb }
         logging.debug("loaded default plugins")
-        # FIXME TEST THIS
         for plugin_path in self.plugin_search_paths:
             plugin_path = os.path.abspath(os.path.expanduser(plugin_path))
             logging.debug("searching for plugins in %s" % plugin_path)
@@ -99,7 +101,6 @@ class UrchinFS(TemplateFS):
                         if os.path.isdir(path) and "%s.py" % self.plugin_main_module in os.listdir(path):
                             try:
                                 info = imp.find_module("__init__", [path])
-                                # FIXME this seems wrong
                                 plugins[name] = imp.load_module(self.plugin_main_module, info[0], info[1], info[2])
                                 logging.debug("found plugin module '%s'" % name)
                                 info[0].close()
@@ -108,12 +109,12 @@ class UrchinFS(TemplateFS):
         logging.debug("loaded plugins:\n%s" % pprint.pformat(plugins))
         return plugins
 
-    def find_plugin_components(self, plugins):
+    def find_plugin_components(self):
         """Find all named plugin classes and sort them by the command-line parameter for which they are valid"""
         logging.debug("loading plugin components...")
         # find all named plugin classes
         named = []
-        for plugin in plugins.values():
+        for plugin in self.plugins.values():
             for (name, cls) in plugin.__dict__.items():
                 if isinstance(cls, type) and hasattr(cls, "name"):
                     named.append(cls)
@@ -124,19 +125,40 @@ class UrchinFS(TemplateFS):
         logging.debug("loaded plugin components:\n%s" % pprint.pformat(plugin_components))
         return plugin_components
 
-    def configure_components(self, option_set, config, plugin_components):
-        logging.debug("configuring components for option_set %s..." % option_set)
+    # FIXME OMG UGLY
+    plugin_class_name = "Plugin"
+    def configure_components(self, option_set, config):
         # each "option set" describes the configuration of a specific source directory/way of formatting
-        plugin_config = {"indexer": None, "matcher": default.DefaultMetadataMatcher, "extractor": None,
-                "merger": default.DefaultMerger, "munger": default.DefaultMunger, "formatter":  default.DefaultFormatter}
-        for plugin_key in self.plugin_keys:
-            if plugin_key in option_set:
-                plugin_short_name = option_set[plugin_key]
-                if plugin_short_name in plugin_components[plugin_key]:
-                    plugin_config[plugin_key] = plugin_components[plugin_key][plugin_short_name]
-                else:
-                    logging.debug("could not find plugin '%s'" % plugin_short_name)
-                    raise ConfigurationError("Could not find specified plugin '%s' for %s component" % (plugin_short_name, plugin_key))
+        logging.debug("configuring components for option_set %s..." % option_set)
+        plugin_config = {k: None for k in self.component_keys}
+        if "plugin" in option_set:
+            if not option_set["plugin"] in self.plugins:
+                raise ConfigurationError("Found no plugin with name '%s'" % option_set["plugin"])
+            plugin_module = self.plugins[option_set["plugin"]]
+            if not self.plugin_class_name in plugin_module.__dict__:
+                raise ConfigurationError("Found plugin module with name '%s', but no class named '%s'" % (option_set["plugin"], self.plugin_class_name))
+            plugin_class = plugin_module.__dict__[self.plugin_class_name]
+            if not isinstance(plugin_class, type):
+                raise ConfigurationError("Found plugin module with name '%s', but '%s' is not a class" % (option_set["plugin"], self.plugin_class_name))
+            plugin = plugin_class()
+            plugin_config = {
+                    "indexer": plugin.indexer,
+                    "matcher": plugin.matcher,
+                    "extractor": plugin.extractor,
+                    "merger": plugin.merger,
+                    "munger": plugin.munger,
+                    "formatter":  plugin.formatter}
+        else:
+            plugin_config = {"indexer": None, "matcher": default.DefaultMetadataMatcher, "extractor": None,
+                    "merger": default.DefaultMerger, "munger": default.DefaultMunger, "formatter":  default.DefaultFormatter}
+            for component_key in self.component_keys:
+                if component_key in option_set:
+                    plugin_short_name = option_set[component_key]
+                    if plugin_short_name in self.plugin_components[component_key]:
+                        plugin_config[component_key] = self.plugin_components[component_key][plugin_short_name]
+                    else:
+                        logging.debug("could not find plugin '%s'" % plugin_short_name)
+                        raise ConfigurationError("Could not find specified plugin '%s' for %s component" % (plugin_short_name, component_key))
         # ensure all components are defined
         for k,v in plugin_config.iteritems():
             if not v:
@@ -169,18 +191,18 @@ class UrchinFS(TemplateFS):
             options = self.cmdline[0]
             logging.debug("Option arguments: " + str(options))
             logging.debug("Nonoption arguments: " + str(self.cmdline[1]))
-            plugin_components = self.find_plugin_components(self.load_plugins())
 
             # FIXME rework this so we don't have to fetch from cmdline
-            from_cmdline = {key: getattr(options, key) for key in self.plugin_keys if hasattr(options, key)}
+            from_cmdline = {key: getattr(options, key) for key in self.component_keys if hasattr(options, key)}
             from_cmdline["source"] = options.source
+            from_cmdline["plugin"] = options.plugin
             option_sets = [from_cmdline]
             logging.debug("from_cmdline: %s" % from_cmdline)
 
             self.mount_configurations = {}
             for option_set in option_sets:
                 config = dict() # FIXME which options should be here?
-                components = self.configure_components(option_set, config, plugin_components)
+                components = self.configure_components(option_set, config)
                 logging.debug("components: %s" % pprint.pformat(components))
                 entries = self.make_entries(components, option_set["source"])
                 self.mount_configurations[option_set["source"]] = {"config": config, "components": components, "entries": entries}

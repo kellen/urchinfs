@@ -3,15 +3,15 @@
 
 from __future__ import absolute_import
 
-"""
 class Plugin(object):
-    def __init__(self, item_matcher=None, metadata_matcher=DefaultMetadataMatcher,
-            metadata_extractor=None, metadata_merger=None,
-            formatter=G):
-        pass
-        self.item_matcher = item_matcher
-        self.metadata_matcher = 
-"""
+    """Plugin encapsulates a set of processing classes"""
+    def __init__(self, indexer, matcher, extractor, merger, munger, formatter):
+        self.indexer = indexer
+        self.matcher = matcher
+        self.extractor = extractor
+        self.merger = merger
+        self.munger = munger
+        self.formatter = formatter
 
 class Indexer(object):
     """Finds items to be indexed"""
