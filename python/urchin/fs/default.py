@@ -14,7 +14,7 @@ class DefaultMetadataMatcher(MetadataMatcher):
     def __init__(self, config):
         pass
     def match(self, path):
-        return path
+        return set(path,)
 
 class DefaultMerger(MetadataMerger):
     """
@@ -61,5 +61,5 @@ class DefaultFormatter(Formatter):
     def __init__(self, config):
         pass
     def format(self, original_name, metadata):
-        return original_name
+        return set([original_name])
 
