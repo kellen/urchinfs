@@ -30,7 +30,7 @@ class BasicJsonMetadataExtractor(MetadataExtractor):
     """
     Basic JSON metadata extractor.
 
-    Returns the unaltered result of json.load()
+    Returns the unaltered result of json.load(), basically passing the buck to the munger.
     """
     def __init__(self, config):
         pass
