@@ -61,5 +61,5 @@ class DefaultFormatter(Formatter):
     def __init__(self, config):
         pass
     def format(self, original_name, metadata):
-        return set([original_name])
+        return set([os.path.basename(original_name)])
 
