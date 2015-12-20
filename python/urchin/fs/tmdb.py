@@ -1,6 +1,7 @@
 import urchin.fs.default
 import urchin.fs.json
 import urchin.fs.plugin
+import logging
 
 class Plugin(urchin.fs.plugin.Plugin):
     name = "tmdb"
@@ -22,8 +23,12 @@ class TMDBMetadataMunger(urchin.fs.plugin.MetadataMunger):
         out = {}
         copy_keys = ["title", "runtime", "original_language"]
         for key in copy_keys:
-            out[key] = set()
-            out[key].add(metadata[key])
+            if key in metadata:
+                val = metadata[key]
+                if type(val) in urchin.fs.json.stringable_types:
+                    out[key] = set([unicode(val)])
+                else:
+                    logging.error("can't convert to string from type %s for key %s" % (type(val)), key)
         extract_name = ["genres", ]
         # the key in metadata -> the value to extract from the object
         extract = {"production_countries": "iso_3166_1"}
@@ -34,10 +39,14 @@ class TMDBMetadataMunger(urchin.fs.plugin.MetadataMunger):
             out[key] = set()
             for val_obj in metadata[key]:
                 if type(val_obj) != dict:
-                    logger.error("can't extract from non-dict for key '%s'" % key)
+                    logging.error("can't extract from non-dict for key '%s'" % key)
                 else:
                     try:
-                        out[key].add(val_obj[obj_key])
+                        val = val_obj[obj_key]
+                        if type(val) in urchin.fs.json.stringable_types:
+                            out[key].add(unicode(val))
+                        else:
+                            logging.error("can't convert to string from type %s" % type(val))
                     except KeyError:
-                        logger.error("object with key '%s' has no key '%s'" % (key, obj_key))
+                        logging.error("object with key '%s' has no key '%s'" % (key, obj_key))
         return out
