@@ -34,9 +34,9 @@ source-dir
 
 """
 
-#LOG_FILENAME = "LOG"
-#logging.basicConfig(filename=LOG_FILENAME,level=logging.INFO,)
-logging.basicConfig(level=logging.DEBUG,)
+LOG_FILENAME = "LOG"
+logging.basicConfig(filename=LOG_FILENAME,level=logging.DEBUG,)
+#logging.basicConfig(level=logging.DEBUG,)
 #logging.getLogger().addHandler(logging.StreamHandler())
 #logging.basicConfig(level=logging.ERROR,)
 fuse.fuse_python_api = (0, 2)
@@ -91,6 +91,8 @@ class Entry(object):
                + tuple(self.metadata_paths)
                + tuple(self.formatted_names)
                + tuple(self.metadata.keys()))
+    def __repr__(self):
+        return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(self.formatted_names))
 
 class Result(object):
     def __init__(self, name, destination=None):
@@ -100,13 +102,17 @@ class Result(object):
         # "The size of a symbolic link is the length of the
         # pathname it contains, without a terminating null byte."
         self.size = len(name) if self.destination else Stat.DIRSIZE
+    def __repr__(self):
+        return "<Result %s>" % (self.name if self.destination is None else "%s -> %s" % (self.name, self.destination))
 
-AND = "^"
-OR = "+"
-CUR = "."
+AND = u"^"
+OR = u"+"
+CUR = u"."
+PARENT= u".."
 AND_RESULT = Result(AND)
 OR_RESULT = Result(OR)
 CUR_RESULT = Result(CUR)
+PARENT_RESULT = Result(PARENT)
 
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
@@ -115,6 +121,7 @@ class UrchinFS(TemplateFS):
         self.component_keys = self.component_types.keys()
         self.plugins = self.load_plugins()
         self.plugin_components = self.find_plugin_components()
+        self.original_working_directory = os.getcwd()
 
         super(UrchinFS, self).__init__(*args, **kwargs)
         # -o indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default,source="../test",watch=true
@@ -228,9 +235,12 @@ class UrchinFS(TemplateFS):
         return {k: cls(config) for k,cls in plugin_config.iteritems()}
 
     def make_entries(self, components, path):
+        if not os.path.isabs(path):
+            path = os.path.join(self.original_working_directory, path)
+        path = os.path.normpath(path)
         entries = []
         indexed = components["indexer"].index(path)
-        logging.debug("indexed: %s" % pprint.pformat(indexed))
+        logging.debug("indexed path %s gave items: %s" % (path, pprint.pformat(indexed)))
         for item in indexed:
             sources = components["matcher"].match(item)
             logging.debug("sources: %s" % pprint.pformat(sources))
@@ -242,7 +252,7 @@ class UrchinFS(TemplateFS):
             logging.debug("munged metadata: %s..." % pprint.pformat(metadata)[:500])
             formatted_names = components["formatter"].format(item, metadata)
             logging.debug("formatted: %s..." % pprint.pformat(formatted_names))
-            entries.append(Entry(path, sources, metadata, formatted_names))
+            entries.append(Entry(item, sources, metadata, formatted_names))
         logging.debug("entries: %s" % pprint.pformat(entries))
         return entries
 
@@ -271,6 +281,8 @@ class UrchinFS(TemplateFS):
                 logging.debug("components: %s" % pprint.pformat(components))
                 entries = self.make_entries(components, option_set["source"])
                 self.mount_configurations[option_set["source"]] = {"config": config, "components": components, "entries": entries}
+            # FIXME hashable?????? to remove duplicates?
+            self.entries = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
             if options.watch:
                 pass
                 # FIXME add inotify support
@@ -291,8 +303,10 @@ class UrchinFS(TemplateFS):
 
     # FIXME private prefix methods?
     def strip_empty_prefix(self, parts):
+        if len(parts) == 0:
+            return parts
         cur = 0
-        while parts[cur] == "":
+        while cur < len(parts) and parts[cur] == "":
             cur = cur + 1
         if cur > 0:
             parts = parts[cur:]
@@ -304,97 +318,99 @@ class UrchinFS(TemplateFS):
     def split_path_recursive(self, path):
         """http://stackoverflow.com/a/15050936/320220"""
         a,b = os.path.split(path)
-        return (split_path(a) if len(a) and len(b) else []) + [b]
+        return (self.split_path(a) if len(a) and len(b) else []) + [b]
 
     def get_results(self, path):
         return self._get_results_from_parts(self.strip_empty_prefix(self.split_path(path)))
 
     def _get_results_from_parts(self, parts):
+        logging.debug("get_results_from_parts: %s" % parts)
         if not parts: # root dir
-            return [result for result in entry.results for entry in self.entries] + [AND_RESULT, CUR_RESULT]
+            return [result for entry in self.entries for result in entry.results] + [AND_RESULT, CUR_RESULT, PARENT_RESULT]
 
         # fake enum
         class Parsed:
-            KEY, VAL, AND, OR, NONE, DIR = range(1,6)
+            KEY, VAL, AND, OR, NONE, DIR = range(1,7)
 
-        class State(object):
-            def __init__(self, found):
-                self.found = found
-                self.last = Parsed.NONE
-                self.key = None
-                self.valid_values = []
-                self.valid_keys = set()
-                for entry in self.found:
-                    self.valid_keys.update(entry.metadata.keys())
-                self.current = dict()
-            def AND(self):
-                self.last = Parsed.AND
-                self.key = None
-                self.valid_values = []
-            def KEY(self, key):
-                self.last = Parsed.KEY
-                self.key = key
-                self.valid_keys = self.valid_keys - set([key])
-                self.current[key] = []
-                self.found = self.filter(self.found, self.key)
-                self.valid_values = self.values(self.found, self.key)
-            def OR(self):
-                self.last = Parsed.OR
-            def filter(self):
-                pass
-            def values(self):
-                pass
-            def get_keys(self):
-                pass
-            def VAL(self, value):
-                self.valid_values = self.valid_values - set([value])
-                self.current[self.key] = self.current[self.key] + [value]
-                # FIXME
-                found = filter....
+        found = self.entries
+        current_valid_keys = set([key for entry in found for key in entry.metadata.keys()])
+        current_valid_values = set()
+        current_key = None
+        state = dict()
 
-        state = State(self.entries)
+        last = Parsed.NONE
         last_index = len(parts)-1
+
         for index,part in enumerate(parts):
             is_last = index == last_index
 
             if part == AND:
-                state.AND()
+                last = Parsed.AND
+                current_key = None
+                current_valid_values = set()
+                current_valid_keys = set([key for key in entry.metadata.keys() for entry in found]) - set(state.keys())
                 if is_last:
-                    return state.valid_keys + [CUR_RESULT]
-            elif state.last == Parsed.AND:
-                if part not in state.valid_keys:
+                    return [Result(key) for key in current_valid_keys] + [CUR_RESULT, PARENT_RESULT]
+            elif last == Parsed.AND:
+                last = Parsed.KEY
+                if part not in current_valid_keys:
                     raise InvalidPathError("invalid key [%s]" % part)
-                if part in state.keys:
+                if part in state:
                     raise InvalidPathError("duplicate key [%s]" % part)
-                state.KEY(part)
+                current_key = part
+                current_valid_keys = current_valid_keys - set([current_key])
+                state[current_key] = set()
+                current_valid_values = set([v for f in found for k,values in f.metadata.iteritems() for v in values if k == current_key]) # FIXME get_values(found, part)
                 if is_last:
-                    return state.valid_values + [CUR_RESULT]
-            elif state.last == Parsed.VAL and part == OR:
-                state.OR()
+                    return [Result(value) for value in current_valid_values] + [CUR_RESULT, PARENT_RESULT]
+            elif last == Parsed.VAL and part == OR:
+                last = Parsed.OR
                 if is_last:
-                    return state.valid_values + [CUR_RESULT]
-            elif state.last == Parsed.KEY or state.last == Parsed.OR:
-                if part not in state.valid_values:
+                    return [Result(value) for value in current_valid_values] + [CUR_RESULT, PARENT_RESULT]
+            elif last == Parsed.KEY or last == Parsed.OR:
+                last = Parsed.VAL
+                if part not in current_valid_values:
+                    logging.debug("current_valid_values: %s" % ','.join(current_valid_values))
                     raise InvalidPathError("invalid value [%s]" % part)
-
-                # FIXME something goes here
-                state.VAL(part)
-
+                current_valid_values = current_valid_values - set([part])
+                state[current_key].update([part])
+                # lookahead, and if the next token is _not_ an OR,
+                # filter the entries by the current facet
+                if is_last or (not is_last and parts[index+1] != OR):
+                    #found = filter(found, current_key, state[current_key])
+                    newfound = []
+                    logging.debug("finding %s -> %s" % (current_key, state[current_key]))
+                    for e in found:
+                        keep = False
+                        logging.debug("\ttesting %s" % e.path)
+                        if current_key in e.metadata:
+                            logging.debug("\t\tkey %s exists" % current_key)
+                            for v in state[current_key]:
+                                if v in e.metadata[current_key]:
+                                    logging.debug("\t\tvalue %s exists" % v)
+                                    keep = True
+                        if keep:
+                            newfound.append(e)
+                    found = newfound
                 if is_last:
-                    ret = state.listing() + [CUR_RESULT]
+                    ret = [r for f in found for r in f.results] + [CUR_RESULT, PARENT_RESULT]
                     # add AND and OR if appropriate
-                    if len(state.valid_values) > 0:
+                    if len(current_valid_values) > 0:
                         ret = ret + [OR_RESULT]
-                    if len(state.valid_keys) > 0:
+                    if len(current_valid_keys) > 0:
                         ret = ret + [AND_RESULT]
                     return ret
             else:
-                state.DIR()
+                last = Parsed.DIR
+                # a "normal directory", i.e. something somewhere else on disk
+                # if this isn't the last component in the path, error out
                 if not is_last:
                     raise InvalidPathError("woops")
-                if part not in state.valid_values:
-                    raise InvalidPathException("invalid value [%s]" % part)
-                return state. ... # FIXME
+                for f in found:
+                    for r in f.results:
+                        if r.name == part:
+                            return [Result(CUR, r.destination)]
+                raise InvalidPathError("invalid dir name [%s]" % part)
 
     #
     # Fuse handling
@@ -404,14 +420,65 @@ class UrchinFS(TemplateFS):
         path = path.decode('utf_8')
         logging.debug("getattr: %s" % path)
         try:
-            pd = self._get_path_dict(path)
-            if "real_path" in pd:
-                mode = stat.S_IFLNK | 0777
-                return Stat(st_mode=mode, st_size=7)
-            else:
-                mode = stat.S_IFDIR | 0755
-                return Stat(st_mode=mode, st_size=Stat.DIRSIZE, st_nlink=2)
-        except InvalidPathException:
+            results = self.get_results(path)
+            logging.debug("\t%s" % results)
+            for r in results:
+                if r.name == CUR:
+                    result_stat = Stat(st_mode = r.mode, st_size = r.size)
+                    logging.debug("\t%s" % result_stat)
+                    return result_stat
+        except InvalidPathError,e:
+            pass
+        return -errno.ENOENT
+
+    def access(self, path, flags):
+        path = path.decode('utf_8')
+        logging.debug("access: %s (flags %s)" % (path, oct(flags)))
+        try:
+            results = self.get_results(path)
+            logging.debug("\t%s" % results)
+            if os.W_OK & flags == os.W_OK:
+                # wants write permission, fail
+                return -errno.EACCES
+            return 0
+        except InvalidPathError:
+            pass
+        return -errno.ENOENT
+
+    def opendir(self, path):
+        path = path.decode('utf_8')
+        logging.debug("opendir: %s" % path)
+        try:
+            results = self.get_results(path)
+            logging.debug("\t%s" % results)
+            return None
+        except InvalidPathError:
+            pass
+        return -errno.ENOENT
+
+    def readdir(self, path, offset, dh=None):
+        path = path.decode('utf_8')
+        logging.debug("readdir: %s (offset %s, dh %s)" % (path, offset, dh))
+        try:
+            results = self.get_results(path)
+            logging.debug("\t%s" % results)
+            for result in results:
+                logging.debug("\tyeilding %s" % result)
+                yield fuse.Direntry(result.name.encode('utf_8', 'replace'))
+        except InvalidPathError:
+            logging.debug("readdir: invalid path %s" % path)
+
+    def readlink(self, path):
+        # TODO it seems like FUSE-python might be calling this too often... see the logs in debugging mode.
+        path = path.decode('utf_8')
+        logging.debug("readlink: %s" % path)
+        try:
+            results = self.get_results(path)
+            logging.debug("\t%s" % results)
+            for r in results:
+                if r.name == CUR:
+                    return r.destination
+        except InvalidPathError:
             pass
         return -errno.ENOENT
 
