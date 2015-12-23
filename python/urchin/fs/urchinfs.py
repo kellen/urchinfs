@@ -21,6 +21,8 @@ import urchin.fs.json as json
 import urchin.fs.tmdb as tmdb
 from urchin.fs.core import Stat, TemplateFS
 
+# FIXME prefix private methods?
+
 """
 urchin-fs TODO
 
@@ -85,6 +87,7 @@ class Entry(object):
         assert type(formatted_names) == set
         self.formatted_names = formatted_names
         self.results = [Result(name, self.path) for name in self.formatted_names]
+    # FIXME evaluate if we should make an inverted hash
     def __hash__(self):
         # FIXME should this take into account the metadata values?
         return hash((self.path,)
@@ -261,6 +264,7 @@ class UrchinFS(TemplateFS):
     #
 
     def fsinit(self):
+        logging.debug("CWD IN fsINIT: %s" % os.getcwd())
         logging.debug("initializing filesystem...")
         try:
             options = self.cmdline[0]
@@ -281,7 +285,6 @@ class UrchinFS(TemplateFS):
                 logging.debug("components: %s" % pprint.pformat(components))
                 entries = self.make_entries(components, option_set["source"])
                 self.mount_configurations[option_set["source"]] = {"config": config, "components": components, "entries": entries}
-            # FIXME hashable?????? to remove duplicates?
             self.entries = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
             if options.watch:
                 pass
@@ -301,7 +304,6 @@ class UrchinFS(TemplateFS):
     # Lookups
     #
 
-    # FIXME private prefix methods?
     def strip_empty_prefix(self, parts):
         if len(parts) == 0:
             return parts
@@ -360,7 +362,7 @@ class UrchinFS(TemplateFS):
                 current_key = part
                 current_valid_keys = current_valid_keys - set([current_key])
                 state[current_key] = set()
-                current_valid_values = set([v for f in found for k,values in f.metadata.iteritems() for v in values if k == current_key]) # FIXME get_values(found, part)
+                current_valid_values = set([v for f in found for k,values in f.metadata.iteritems() for v in values if k == current_key])
                 if is_last:
                     return [Result(value) for value in current_valid_values] + [CUR_RESULT, PARENT_RESULT]
             elif last == Parsed.VAL and part == OR:
@@ -483,9 +485,7 @@ class UrchinFS(TemplateFS):
         return -errno.ENOENT
 
 def main():
-    # FIXME add useful usage description
-    usage = """UrchinFS: A faceted-search FUSE file system.""" + fuse.Fuse.fusage
-    server = UrchinFS(version="%prog " + fuse.__version__, usage=usage, dash_s_do='setsingle')
+    server = UrchinFS(version="%prog " + fuse.__version__, dash_s_do='setsingle')
     server.parse(errex=1)
     server.multithreaded = 0
 
@@ -494,8 +494,7 @@ def main():
         server.main()
     except fuse.FuseError, e:
         logging.error(str(e))
+    logging.debug("File system unmounted")
 
 if __name__ == '__main__':
     main()
-
-logging.debug("File system unmounted")
