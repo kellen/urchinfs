@@ -51,7 +51,8 @@ class MovieFetcher(object):
     tmdb_url = "http://api.themoviedb.org/3/"
     tmdb_files = {
         "movie.json": '{0}movie/{1}',
-        "credits.json": '{0}movie/{1}/credits'
+        "credits.json": '{0}movie/{1}/credits',
+        "alternative_titles.json": '{0}movie/{1}/alternative_titles',
     }
 
     def __init__(self):
@@ -189,7 +190,7 @@ def main():
     try:
         parser = argparse.ArgumentParser(description='searches TMDB and outputs json metadata files')
         parser.add_argument('-o', '--overwrite', action='store_true', help='overwrite existing metadata files')
-        parser.add_argument('dir', nargs='+', help='directories to process; if omitted the current directory is assumed')
+        parser.add_argument('dir', nargs='+', help='directories to process')
         args = vars(parser.parse_args())
         #try:
         #except argparse.ArgumentError, msg:
