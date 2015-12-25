@@ -23,62 +23,29 @@ DESCRIPTION
 which match all given facets. Facets are nested in a **^** directory, where **^** is 
 the symbol for the `AND <http://en.wikipedia.org/wiki/Logical_conjunction>`_ operation.
 
-::
-
-    $ ls -1 example/
-    ^
-    Easter Parade (1948, color)
-    Kiss Me Deadly (1955, bw)
-    The Lady Vanishes (1938, bw)
-    The Naked City (1948, bw)
-
-    $ ls -1 example/^/
-    color
-    year
-
-    $ ls -1 example/^/year/1948/
-    ^
-    +
-    Easter Parade (1948, color)
-    The Naked City (1948, bw)
-
-    $ ls -1 example/^/year/1948/^/color/bw/
-    ^
-    +
-    Easter Parade (1948, color)
-    The Naked City (1948, bw)
-
 Each facet can be specified with multiple values, where the results
 have one of these values. Values are nested in a **+** directory,
 where **+** is the symbol for the 
 `OR <http://en.wikipedia.org/wiki/Logical_disjunction>`_ operation.
 
-::
+OPERATION
+=========
 
-    $ ls -1 example/
-    ^
-    Easter Parade (1948, color)
-    Kiss Me Deadly (1955, bw)
-    The Lady Vanishes (1938, bw)
-    The Naked City (1948, bw)
+`urchinfs` operates on a configurable pipeline of **components** which indexes items
+and produces a map of metadata values and one or more names to use for the item.
+The pipeline looks like this:
 
-    $ ls -1 example/^/year/
-    1938
-    1948
-    1955
+source directory ->
+**indexer** -> items -> 
+**matcher** -> metadata-sources-for-item ->
+**extractor** -> metadata-collections-for-item ->
+**merger** -> combined-metadata-for-item ->
+**munger** -> final-metadata-for-item ->
+**formatter** -> formatted-names-for-item
 
-    $ ls -1 example/^/year/1948/
-    ^
-    +
-    Easter Parade (1948, color)
-    The Naked City (1948, bw)
+An entire component pipeline can alternatively be configured via a **plugin** class.
 
-    $ ls -1 example/^/year/1948/+/1955/
-    ^
-    +
-    Easter Parade (1948, color)
-    Kiss Me Deadly (1955, bw)
-    The Naked City (1948, bw)
+See the **COMPONENTS** section for an extended description.
 
 OPTIONS
 =======
@@ -100,31 +67,69 @@ MOUNT OPTIONS
 =============
 
 source
-    the source directory to index
-
-indexer
-    the short name for the indexer class
-
-matcher
-    the short name for the matcher class
-
-extractor
-    the short name for the extractor class
-
-merger
-    the short name for the merger class
-
-munger
-    the short name for the munger class
-
-formatter
-    the short name for the formatter class
-
+    the source directory to index, required.
 plugin
-    the short name for the plugin class
-
+    the short name for the plugin class. If set, all component options are ignored.
 watch
-    if set, watches the source directory for changes via inotify
+    watch the source directory for changes via inotify?
+COMPONENTS
+    indexer
+        the short name for the indexer class, required if no plugin is specified.
+
+    matcher
+        the short name for the matcher class, default: "default".
+
+    extractor
+        the short name for the extractor class, required if no plugin is specified.
+
+    merger
+        the short name for the merger class, default: "default".
+
+    munger
+        the short name for the munger class, default: "default".
+
+    formatter
+        the short name for the formatter class, default: "default".
+
+BUILT-INS
+=========
+
+COMPONENTS
+    INDEXER
+        json
+            Indexes directories which contain json files
+    MATCHER
+        default
+            Matches the item path
+        json
+            Matches json files contained in the item directory 
+    EXTRACTOR
+        json-basic
+            Parses a json file and returns the untouched json object
+        json
+            Parses a json file and converts non-string keys and values to strings if 
+            the conversion is straightforward. Values in the source must be are single 
+            values or lists of single values, otherwise they are ignored. 
+    MERGER
+        default
+            Merges metadata maps while attempting to do as little as possible.
+            Values for duplicate keys are merged into lists, unless the values
+            are themselves tuples, sets, or lists, in which case the values are combined.
+    MUNGER
+        default
+            Does nothing
+        tmdb
+            Extracts some specified values from data from TheMovieDB; used in the **tmdb** plugin
+    FORMATTER
+        default
+            Returns the basename for the item path
+        tmdb
+            Formats as: "title (alternative-title) (director, year)", falls back on
+            the item path if no title exists.
+PLUGINS
+    tmdb
+        Same as: indexer: json, matcher: json, extractor: json-basic,
+        merger: default, munger: tmdb, formatter: tmdb
 
 COMPONENTS
 ==========
