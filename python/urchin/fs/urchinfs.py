@@ -14,6 +14,7 @@ import pprint
 import fuse
 import imp
 
+from urchin import __version__
 import urchin.fs.plugin as plugin
 import urchin.fs.default as default
 import urchin.fs.mp3 as mp3
@@ -485,7 +486,7 @@ class UrchinFS(TemplateFS):
         return -errno.ENOENT
 
 def main():
-    server = UrchinFS(version="%prog " + fuse.__version__, dash_s_do='setsingle')
+    server = UrchinFS(version="%prog " + __version__, dash_s_do='setsingle')
     server.parse(errex=1)
     server.multithreaded = 0
 
