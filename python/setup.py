@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
         name='urchin-tmdb',
-        version='0.1',
+        version='0.1.0',
         description='The Movie DB JSON-content fetcher',
         author='Kellen Dye',
         author_email='kellen@cretin.net',
