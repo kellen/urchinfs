@@ -40,7 +40,7 @@ class DefaultMerger(MetadataMerger):
                     elif cur_val_type == list and val_type == list:
                         merged[k].extend(v)
                     elif cur_val_type == list:
-                        merged[k].add(v)
+                        merged[k].append(v)
                     else:
                         merged[k] = [merged[k], v]
                     #else:

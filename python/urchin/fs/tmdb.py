@@ -80,7 +80,7 @@ class TMDBFormatter(urchin.fs.plugin.Formatter):
         pass
     def format(self, original_name, metadata):
         # everything is wraped in sets
-        title = None if "title" not in metadata else ", ".join(metadata["title"))
+        title = None if "title" not in metadata else ", ".join(metadata["title"])
         year = None if "year" not in metadata else ", ".join(metadata["year"])
         alts = None if "original_title" not in metadata else ", ".join(metadata["original_title"])
         director = None if "director" not in metadata else ", ".join(metadata["director"])
