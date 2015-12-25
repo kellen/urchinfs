@@ -70,6 +70,8 @@ class MetadataMerger(object):
 class Formatter(object):
     """Formatter for display names."""
     component = "formatter"
+    def __init__(self, config):
+        pass
     def format(self, original_name, metadata):
         """Takes the original file/directory name and associated metadata and returns one or more formatted "display names" """
         raise NotImplementedError()

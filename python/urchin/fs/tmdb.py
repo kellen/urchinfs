@@ -2,6 +2,7 @@ import urchin.fs.default
 import urchin.fs.json
 import urchin.fs.plugin
 import logging
+from datetime import datetime
 
 class Plugin(urchin.fs.plugin.Plugin):
     name = "tmdb"
@@ -12,7 +13,7 @@ class Plugin(urchin.fs.plugin.Plugin):
                 extractor=urchin.fs.json.BasicJsonMetadataExtractor,
                 merger=urchin.fs.default.DefaultMerger,
                 munger=TMDBMetadataMunger,
-                formatter=urchin.fs.default.DefaultFormatter
+                formatter=TMDBFormatter
                 )
 
 class TMDBMetadataMunger(urchin.fs.plugin.MetadataMunger):
@@ -49,4 +50,45 @@ class TMDBMetadataMunger(urchin.fs.plugin.MetadataMunger):
                             logging.error("can't convert to string from type %s" % type(val))
                     except KeyError:
                         logging.error("object with key '%s' has no key '%s'" % (key, obj_key))
+        # director
+        crew_key = "crew"
+        if crew_key in metadata:
+            directors = set()
+            for crew in metadata[crew_key]:
+                if "job" in crew and crew["job"] == "Director":
+                    directors.add(crew["name"])
+            if directors:
+                out["director"] = directors
+
+        # year
+        date_key = "release_date"
+        if date_key in metadata:
+            years = set()
+            date = metadata[date_key]
+            try:
+                d = datetime.strptime(date, "%Y-%m-%d")
+                years.add(unicode(d.year))
+            except ValueError:
+                logging.debug("Could not parse year from [%s]" % date)
+            if years:
+                out["year"] = years
         return out
+
+class TMDBFormatter(urchin.fs.plugin.Formatter):
+    name = "tmdb"
+    def __init__(self, config):
+        pass
+    def format(self, original_name, metadata):
+        # everything is wraped in sets
+        title = original_name if "title" not in metadata else ", ".join(metadata["title"])
+        year = None if "year" not in metadata else ", ".join(metadata["year"])
+        alts = None if "alternative_title" not in metadata else ", ".join(metadata["alternative_title"])
+        director = None if "director" not in metadata else ", ".join(metadata["director"])
+
+        parens = ", ".join([p for p in [director, year] if p is not None])
+
+        formatted_name = "%s%s%s" % (title,
+                "" if not alts else " (%s)" % alts,
+                "" if not parens else " (%s)" % parens)
+        logging.debug("formatted name: %s" % formatted_name)
+        return set([formatted_name])

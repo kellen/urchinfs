@@ -23,6 +23,9 @@ import urchin.fs.tmdb as tmdb
 from urchin.fs.core import Stat, TemplateFS
 
 # FIXME prefix private methods?
+# FIXME inotify
+# FIXME disambiguation for collisions
+# FIXME cleanup for disallowed characters
 
 """
 urchin-fs TODO
