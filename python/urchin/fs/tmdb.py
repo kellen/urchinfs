@@ -22,7 +22,7 @@ class TMDBMetadataMunger(urchin.fs.plugin.MetadataMunger):
         pass
     def mung(self, metadata):
         out = {}
-        copy_keys = ["title", "runtime", "original_language"]
+        copy_keys = ["original_title", "title", "runtime", "original_language", "imdb_id"]
         for key in copy_keys:
             if key in metadata:
                 val = metadata[key]
@@ -80,15 +80,14 @@ class TMDBFormatter(urchin.fs.plugin.Formatter):
         pass
     def format(self, original_name, metadata):
         # everything is wraped in sets
-        title = original_name if "title" not in metadata else ", ".join(metadata["title"])
+        title = None if "title" not in metadata else ", ".join(metadata["title"))
         year = None if "year" not in metadata else ", ".join(metadata["year"])
-        alts = None if "alternative_title" not in metadata else ", ".join(metadata["alternative_title"])
+        alts = None if "original_title" not in metadata else ", ".join(metadata["original_title"])
         director = None if "director" not in metadata else ", ".join(metadata["director"])
 
         parens = ", ".join([p for p in [director, year] if p is not None])
 
         formatted_name = "%s%s%s" % (title,
-                "" if not alts else " (%s)" % alts,
+                "" if not alts or alts == title else " (%s)" % alts,
                 "" if not parens else " (%s)" % parens)
-        logging.debug("formatted name: %s" % formatted_name)
         return set([formatted_name])
