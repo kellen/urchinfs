@@ -1,7 +1,7 @@
 urchin-fs
 =========
 
-A FUSE-based filesystem which finds and reads arbitrary metadata files
+A FUSE-based filesystem which reads arbitrary metadata
 and presents a faceted-search-style view on the containing directories.
 
 Motivation
