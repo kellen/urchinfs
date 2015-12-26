@@ -26,6 +26,8 @@ from urchin.fs.core import Stat, TemplateFS
 # FIXME inotify
 # FIXME disambiguation for collisions
 # FIXME cleanup for disallowed characters
+# FIXME configuration via file rather than options
+# FIXME unit tests
 
 """
 urchin-fs TODO

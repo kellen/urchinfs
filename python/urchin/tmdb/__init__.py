@@ -15,7 +15,6 @@ import requests
 import codecs
 import urllib
 
-#from tmdb3 import set_key, searchMovie, Movie
 from googlesearch import GoogleSearch
 
 logging.basicConfig(level=logging.ERROR,)
@@ -45,7 +44,6 @@ class MovieFetcher(object):
     )([ _,.()\[\]\-]|$)  # separator or end-of-string
     """, re.VERBOSE | re.IGNORECASE)
 
-    #cleanup_pattern = re.compile(r"(^|[ _,.()\[\]\-])(ac3|dts|custom|dc|divx|divx5|dsr|dsrip|dutch|dvd|dvdrip|dvdscr|dvdscreener|screener|dvdivx|cam|fragment|fs|hdtv|hdrip|hdtvrip|internal|limited|multisubs|ntsc|ogg|ogm|pal|pdtv|proper|repack|rerip|retail|cd[1-9]|r3|r5|bd5|se|svcd|swedish|german|read.nfo|nfofix|unrated|ws|telesync|ts|telecine|tc|brrip|bdrip|480p|480i|576p|576i|720p|720i|1080p|1080i|hrhd|hrhdtv|hddvd|bluray|x264|h264|xvid|xvidvd|xxx|www.www|\[.*\])([ _,.()\[\]\-]|$)", re.IGNORECASE)
     imdb_pattern = re.compile(r"https?://(?:www\.)?imdb.com/title/(tt[0-9]+)/?$", re.IGNORECASE)
 
     tmdb_url = "http://api.themoviedb.org/3/"
@@ -53,11 +51,15 @@ class MovieFetcher(object):
         "movie.json": '{0}movie/{1}',
         "credits.json": '{0}movie/{1}/credits',
         "alternative_titles.json": '{0}movie/{1}/alternative_titles',
+        "images.json": '{0}movie/{1}/images',
     }
 
+    default_api_key_path = "~/.urchin/api_key"
     def __init__(self):
         self.api_key = None
-        api_key_path = os.path.expanduser("~/.urchin/api_key")
+        api_key_path = os.path.expanduser(default_api_key_path)
+        if not os.path.exists(api_key_path):
+            raise IOError("api key file %s does not exist" % api_key_path)
         with open(api_key_path, 'r') as api_key_file:
             self.api_key = api_key_file.read().strip()
     def clean(self, query):
@@ -192,9 +194,6 @@ def main():
         parser.add_argument('-o', '--overwrite', action='store_true', help='overwrite existing metadata files')
         parser.add_argument('dir', nargs='+', help='directories to process')
         args = vars(parser.parse_args())
-        #try:
-        #except argparse.ArgumentError, msg:
-        #     raise Usage(msg)
 
         fetcher = MovieFetcher()
         if args["dir"]:
@@ -212,7 +211,7 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 
-# TESTS
+# FIXME TESTS
 # input is a file
 # input dir is not writable
 # tests for kodi regex
