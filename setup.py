@@ -3,13 +3,13 @@
 from distutils.core import setup
 
 setup(
-        name='urchin-tmdb',
+        name='urchin',
         version='0.1.0',
-        description='The Movie DB JSON-content fetcher',
+        description='faceted-search FUSE filesystem and utilities',
         author='Kellen Dye',
         author_email='kellen@cretin.net',
-        url='https://github.com/kellen/urchin-tmdb/',
+        url='https://github.com/kellen/urchinfs/',
         packages=['urchin'],
         license='Public Domain',
-        install_requires=['tmdb3', 'googlesearch', 'requests']
+        install_requires=['googlesearch', 'requests', 'fuse']
         )
