@@ -1,3 +1,10 @@
+# urchin
+mountpoint
+*.pyc
+LOG
+test
+test.py
+
 # Object files
 *.o
 *.ko
