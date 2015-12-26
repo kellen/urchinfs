@@ -9,7 +9,7 @@ setup(
         author='Kellen Dye',
         author_email='kellen@cretin.net',
         url='https://github.com/kellen/urchinfs/',
-        packages=['urchin'],
+        packages=['urchin', 'urchin.fs', 'urchin.tmdb'],
         license='Public Domain',
         install_requires=['googlesearch', 'requests', 'fuse']
         )
