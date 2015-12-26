@@ -5,6 +5,7 @@ LOG
 test
 dist
 MANIFEST
+urchin.egg-info
 
 # Object files
 *.o
