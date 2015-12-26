@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup
 
 setup(
         name='urchin',
@@ -11,5 +11,5 @@ setup(
         url='https://github.com/kellen/urchinfs/',
         packages=['urchin', 'urchin.fs', 'urchin.tmdb'],
         license='Public Domain',
-        install_requires=['googlesearch', 'requests', 'fuse']
+        install_requires=['googlesearch', 'requests', 'fuse-python']
         )
