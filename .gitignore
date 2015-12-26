@@ -3,7 +3,8 @@ mountpoint
 *.pyc
 LOG
 test
-test.py
+dist
+MANIFEST
 
 # Object files
 *.o
