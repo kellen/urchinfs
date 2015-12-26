@@ -16,11 +16,6 @@ may contain mp3/flac/ogg files, cover/cd scans, text files, etc. A
 "movie" may contain multiple video files, samples, subtitles, cover
 scans, etc.
 
-Implementations
----------------
-
-Multiple non-working/incomplete implementations: python, D, rust.
-
 Usage
 -----
 
@@ -90,3 +85,13 @@ providing additional values, but
 [UTF-8 collation rules](http://unicode.org/reports/tr10/#Multi_Level_Comparison) 
 ignore punctuation in the first sorting stage, which resulted in the 
 facets being mixed in with the directory listings.
+
+Installation
+------------
+
+```
+sudo apt-get install fuse libfuse-dev python-fuse
+python-mutagen
+```
+
+pip install inotify
