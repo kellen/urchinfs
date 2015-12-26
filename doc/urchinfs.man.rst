@@ -202,7 +202,7 @@ an **__init__.py** file. For example, an **imdb** plugin would be located in
 
 Plugins may provide complete pipelines by inheriting from the `urchin.fs.plugin.Plugin` 
 class, or provide single components by inheriting from one of: `Indexer`, `MetadataMatcher`, 
-`MetadataExtractor`, `MetadataMunger`, `MetadataMerger`, or `Formatter`.
+`MetadataExtractor`, `MetadataMerger`, `MetadataMunger`, or `Formatter`.
 
 Each plugin or component must have an attribute **name** which specifies the short
 name used on the command line, for example in `indexer=json`, **json** is the short
