@@ -42,11 +42,6 @@ source-dir
 
 """
 
-LOG_FILENAME = "LOG"
-logging.basicConfig(filename=LOG_FILENAME,level=logging.DEBUG,)
-#logging.basicConfig(level=logging.DEBUG,)
-#logging.getLogger().addHandler(logging.StreamHandler())
-#logging.basicConfig(level=logging.ERROR,)
 fuse.fuse_python_api = (0, 2)
 
 class ConfigurationError(fuse.FuseError):
@@ -118,6 +113,7 @@ AND = u"^"
 OR = u"+"
 CUR = u"."
 PARENT= u".."
+
 AND_RESULT = Result(AND)
 OR_RESULT = Result(OR)
 CUR_RESULT = Result(CUR)
@@ -134,14 +130,15 @@ class UrchinFS(TemplateFS):
 
         super(UrchinFS, self).__init__(*args, **kwargs)
         # -o indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default,source="../test",watch=true
+        self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
         self.parser.add_option(mountopt="source", help="source directory")
-        self.parser.add_option(mountopt="indexer", help="indexer class")
-        self.parser.add_option(mountopt="matcher", help="matcher class")
-        self.parser.add_option(mountopt="extractor", help="extractor class")
-        self.parser.add_option(mountopt="merger", help="merger class")
-        self.parser.add_option(mountopt="munger", help="munger class")
-        self.parser.add_option(mountopt="formatter", help="formatter class")
-        self.parser.add_option(mountopt="plugin", help="plugin class")
+        self.parser.add_option(mountopt="indexer", help="indexer name")
+        self.parser.add_option(mountopt="matcher", help="matcher name")
+        self.parser.add_option(mountopt="extractor", help="extractor name")
+        self.parser.add_option(mountopt="merger", help="merger name")
+        self.parser.add_option(mountopt="munger", help="munger name")
+        self.parser.add_option(mountopt="formatter", help="formatter name")
+        self.parser.add_option(mountopt="plugin", help="plugin name. if set, component options ignored")
         self.parser.add_option(mountopt="watch", help="watch the source directory for changes?")
 
     #
@@ -243,10 +240,13 @@ class UrchinFS(TemplateFS):
         logging.debug("using plugin_config:\n%s" % pprint.pformat(plugin_config))
         return {k: cls(config) for k,cls in plugin_config.iteritems()}
 
-    def make_entries(self, components, path):
+    def _normalize_path(self, path):
         if not os.path.isabs(path):
             path = os.path.join(self.original_working_directory, path)
-        path = os.path.normpath(path)
+        return os.path.normpath(path)
+
+    def make_entries(self, components, path):
+        path = self._normalize_path(path)
         entries = []
         indexed = components["indexer"].index(path)
         logging.debug("indexed path %s gave items: %s" % (path, pprint.pformat(indexed)))
@@ -270,41 +270,59 @@ class UrchinFS(TemplateFS):
     #
 
     def fsinit(self):
-        logging.debug("CWD IN fsINIT: %s" % os.getcwd())
-        logging.debug("initializing filesystem...")
+        logging.debug("initialized filesystem")
+
+    def _load_configurations_from_file(self, path):
+        """configuration must be a python file with a variable 'config' which is a list of dicts."""
+        path = self._normalize_path(path)
+        context = {}
         try:
-            options = self.cmdline[0]
-            logging.debug("Option arguments: " + str(options))
-            logging.debug("Nonoption arguments: " + str(self.cmdline[1]))
+            execfile(path, context)
+        except Exception:
+            raise ConfigurationError("Error while attempting to load configuration from %s" % path)
+        if "config" not in context:
+            raise ConfigurationError("No 'config' variable defined in %s" % path)
+        config = context["config"]
+        if isinstance(config, dict):
+            config = [config]
+        if not isinstance(config, list):
+            raise ConfigurationError("'config' must be a dict or a list of dicts")
+        for d in config:
+            if not isinstance(d, dict):
+                raise ConfigurationError("'config' must be a dict or a list of dicts")
+            if "source" in d:
+                if not os.path.isabs(d["source"]):
+                    raise ConfigurationError("'source' [%s] must be an absolute path when defined in a config file" % d["source"])
+        return config
 
-            # FIXME rework this so we don't have to fetch from cmdline
-            from_cmdline = {key: getattr(options, key) for key in self.component_keys if hasattr(options, key)}
-            from_cmdline["source"] = options.source
-            from_cmdline["plugin"] = options.plugin
-            option_sets = [from_cmdline]
-            logging.debug("from_cmdline: %s" % from_cmdline)
+    def _get_option_sets(self):
+        options = self.cmdline[0] # ugh
+        if options.config:
+            logging.debug("loading configuration from [%s], other options ignored" % options.config)
+            return self._load_configurations_from_file(options.config)
+        else:
+            logging.debug("loading configuration from command line options")
+            # extract dict from optparse.Values instance
+            return [{k:v for k,v in vars(options).items() if v}]
 
-            self.mount_configurations = {}
-            for option_set in option_sets:
-                config = dict() # FIXME which options should be here?
-                components = self.configure_components(option_set, config)
-                logging.debug("components: %s" % pprint.pformat(components))
-                entries = self.make_entries(components, option_set["source"])
-                self.mount_configurations[option_set["source"]] = {"config": config, "components": components, "entries": entries}
-            self.entries = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
-            if options.watch:
+    def configure(self):
+        logging.debug("configuring filesystem...")
+        self.mount_configurations = {}
+        for option_set in self._get_option_sets():
+            config = dict() # FIXME which options should be here?
+            components = self.configure_components(option_set, config)
+            logging.debug("components: %s" % pprint.pformat(components))
+            entries = self.make_entries(components, option_set["source"])
+            self.mount_configurations[option_set["source"]] = {"config": config, "components": components, "entries": entries}
+            if option_set["watch"]:
                 pass
                 # FIXME add inotify support
                 #self.inotify_fd = inotifyx.init()
                 # FIXME add watches
                 # FIXME decide where to update things
                 # FIXME check the system inotify limit and warn if watches exceed
-        except Exception, e:
-            # FIXME Fatal errors should be resolved before init() (or potentially even main()) is called
-            # FIXME so.... perhaps do our own options parsing so we can load all the plugins before we get to here.
-            logging.exception("Failed to initialize filesystem.")
-            raise e
-        logging.debug("initialized filesystem")
+        self.entries = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
+        logging.debug("configured filesystem")
 
     #
     # Lookups
@@ -385,7 +403,6 @@ class UrchinFS(TemplateFS):
                 # lookahead, and if the next token is _not_ an OR,
                 # filter the entries by the current facet
                 if is_last or (not is_last and parts[index+1] != OR):
-                    #found = filter(found, current_key, state[current_key])
                     newfound = []
                     logging.debug("finding %s -> %s" % (current_key, state[current_key]))
                     for e in found:
@@ -492,15 +509,29 @@ class UrchinFS(TemplateFS):
 
 def main():
     server = UrchinFS(version="%prog " + __version__, dash_s_do='setsingle')
-    server.parse(errex=1)
+    args = server.parse(errex=1)
     server.multithreaded = 0
 
-    exit_code = 0
+    # FIXME on error, with -f this seems to print duplicate messages to console
+    level = logging.DEBUG if "debug" in args.optlist else logging.ERROR
+    if args.getmod("foreground"):
+        # FIXME this doesn't appear to properly output to the foreground
+        logging.basicConfig(level=level)
+        logging.getLogger().addHandler(logging.StreamHandler())
+    else:
+        # FIXME add option for logging to file
+        # FIXME if --log LOGFILE
+        logging.basicConfig(filename="LOG",level=level,)
+
+    try:
+        server.configure()
+    except ConfigurationError, e:
+        logging.error("Failed to configure filesystem, exiting. Cause:\n\t%s" % e.message)
+        sys.exit(1)
     try:
         server.main()
     except fuse.FuseError, e:
-        logging.error(str(e))
-    logging.debug("File system unmounted")
+        logging.error("Error during filesystem operation. Cause:\n\t%s" % e.message)
 
 if __name__ == '__main__':
     main()
