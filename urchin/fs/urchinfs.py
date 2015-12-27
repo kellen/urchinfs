@@ -27,19 +27,6 @@ from urchin.fs.core import Stat, TemplateFS
 # FIXME cleanup for disallowed characters
 # FIXME unit tests
 
-"""
-urchin-fs TODO
-
-source-dir
--> indexer -> items-to-index
--> matcher -> metadata-sources-for-item
--> extractor -> metadata-collections-for-item
--> merger -> combined-metadata-for-item
--> munger -> munged-metadata-collections-for-item
--> formatter -> names-for-item
-
-"""
-
 fuse.fuse_python_api = (0, 2)
 
 class ConfigurationError(fuse.FuseError):
@@ -48,9 +35,8 @@ class ConfigurationError(fuse.FuseError):
 class InvalidPathError(Exception):
     pass
 
-# simplistic immutable contract
-# like http://stackoverflow.com/a/18092572/320220
 class immutable(type):
+    """simplistic immutable contract similar to http://stackoverflow.com/a/18092572/320220"""
     def __init__(cls, classname, parents, attributes):
         cls.__original_init__ = cls.__init__
         cls.__original_setattr__ = cls.__setattr__
@@ -75,6 +61,13 @@ class immutable(type):
         cls.__delattr__ = delattr
 
 class Entry(object):
+    """
+    An entry in the filesystem.
+    `path` is the actual path of the file/directory
+    `metadata_paths` are the paths from which `metadata` is derived
+    `metadata` is the metadata associated with the entry
+    `formatted_names` are the names by which the entry will be displayed
+    """
     __metaclass__ = immutable
     def __init__(self, path, metadata_paths, metadata, formatted_names):
         assert type(path) == str
@@ -97,6 +90,7 @@ class Entry(object):
         return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(self.formatted_names))
 
 class Result(object):
+    """represntation of a directory/symlink"""
     def __init__(self, name, destination=None):
         self.name = name
         self.destination = destination
@@ -127,17 +121,12 @@ class UrchinFS(TemplateFS):
         self.original_working_directory = os.getcwd()
 
         super(UrchinFS, self).__init__(*args, **kwargs)
-        # -o indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default,source="../test",watch=true
         self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
         self.parser.add_option(mountopt="source", help="source directory")
-        self.parser.add_option(mountopt="indexer", help="indexer name")
-        self.parser.add_option(mountopt="matcher", help="matcher name")
-        self.parser.add_option(mountopt="extractor", help="extractor name")
-        self.parser.add_option(mountopt="merger", help="merger name")
-        self.parser.add_option(mountopt="munger", help="munger name")
-        self.parser.add_option(mountopt="formatter", help="formatter name")
         self.parser.add_option(mountopt="plugin", help="plugin name. if set, component options ignored")
         self.parser.add_option(mountopt="watch", help="watch the source directory for changes?")
+        for k in self.component_keys:
+            self.parser.add_option(mountopt=k, help="%s name" % k)
 
     #
     # Plugin handling
