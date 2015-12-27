@@ -27,6 +27,7 @@ from urchin.fs.core import Stat, TemplateFS
 # FIXME cleanup for disallowed characters
 # FIXME unit tests
 
+logging.basicConfig(filename="LOG",level=logging.DEBUG,)
 fuse.fuse_python_api = (0, 2)
 
 class ConfigurationError(fuse.FuseError):
@@ -170,24 +171,30 @@ class UrchinFS(TemplateFS):
         logging.debug("loaded plugins:\n%s" % pprint.pformat(plugins))
         return plugins
 
+    def _components_from_modules(self, modules):
+        """find all components in modules"""
+        # find all named classes
+        named = []
+        for module in modules:
+            for (name, cls) in module.__dict__.items():
+                if isinstance(cls, type) and hasattr(cls, "name"):
+                    named.append(cls)
+        # sort classes by component type
+        components = dict()
+        for component_name,component_cls in self.component_types.iteritems():
+            components[component_name] = {cls.name: cls for cls in named if issubclass(cls, component_cls)} # fuck duck typing
+        return components
+
     def _find_plugin_components(self):
         """Find all named plugin classes and sort them by the command-line parameter for which they are valid"""
         logging.debug("loading plugin components...")
-        # find all named plugin classes
-        named = []
-        for plugin in self.plugins.values():
-            for (name, cls) in plugin.__dict__.items():
-                if isinstance(cls, type) and hasattr(cls, "name"):
-                    named.append(cls)
-        # sort by type
-        plugin_components = dict()
-        for component_name,component_cls in self.component_types.iteritems():
-            plugin_components[component_name] = {cls.name: cls for cls in named if issubclass(cls, component_cls)} # fuck duck typing
+        plugin_components = self._components_from_modules(self.plugins.values())
         logging.debug("loaded plugin components:\n%s" % pprint.pformat(plugin_components))
         return plugin_components
 
     _plugin_class_name = "Plugin"
     def _configure_components_from_plugin(self, plugin_name):
+        """load a set of components from a plugin class given its name"""
         if not plugin_name in self.plugins:
             raise ConfigurationError("Found no plugin with name '%s'" % plugin_name)
         plugin_module = self.plugins[plugin_name]
@@ -197,11 +204,14 @@ class UrchinFS(TemplateFS):
         if not isinstance(plugin_class, type):
             raise ConfigurationError("Found plugin module with name '%s', but '%s' is not a class" % (plugin_name, self._plugin_class_name))
         plugin = plugin_class()
-        return {"indexer": plugin.indexer, "matcher": plugin.matcher, "extractor": plugin.extractor, "merger": plugin.merger, "munger": plugin.munger, "formatter":  plugin.formatter}
+        return {k: getattr(plugin, k) for k in self.component_keys}
 
     def _configure_components_from_options(self, option_set):
-        component_config = {"indexer": None, "matcher": default.DefaultMetadataMatcher, "extractor": None,
-                "merger": default.DefaultMerger, "munger": default.DefaultMunger, "formatter":  default.DefaultFormatter}
+        """load a set of components by name, using defaults if not specified"""
+        # load the classes defined in default
+        component_config = {k: None for k in self.component_keys}
+        component_config.update({key: v for key,value in self._components_from_modules([default]).items() for k,v in value.items()})
+        # override with the classes specified on the command line
         for component_key in self.component_keys:
             if component_key in option_set:
                 component_name = option_set[component_key]
@@ -210,6 +220,7 @@ class UrchinFS(TemplateFS):
                 else:
                     logging.debug("could not find plugin '%s'" % component_name)
                     raise ConfigurationError("Could not find specified plugin '%s' for %s component" % (component_name, component_key))
+        logging.debug("component configuration from options:\n%s" % pprint.pformat(component_config))
         return component_config
 
     def _configure_components(self, option_set):
@@ -496,15 +507,15 @@ def main():
     server.multithreaded = 0
 
     # FIXME on error, with -f this seems to print duplicate messages to console
-    level = logging.DEBUG if "debug" in args.optlist else logging.INFO
-    if args.getmod("foreground"):
-        # FIXME this doesn't appear to properly output to the foreground
-        logging.basicConfig(level=level)
-        logging.getLogger().addHandler(logging.StreamHandler())
-    else:
-        # FIXME add option for logging to file
-        # FIXME if --log LOGFILE
-        logging.basicConfig(filename="LOG",level=level,)
+    #level = logging.DEBUG if "debug" in args.optlist else logging.INFO
+    #if args.getmod("foreground"):
+    #    # FIXME this doesn't appear to properly output to the foreground
+    #    logging.basicConfig(level=level)
+    #    logging.getLogger().addHandler(logging.StreamHandler())
+    #else:
+    #    # FIXME add option for logging to file
+    #    # FIXME if --log LOGFILE
+    #    logging.basicConfig(filename="LOG",level=level,)
 
     try:
         server.configure()
