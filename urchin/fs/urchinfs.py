@@ -22,11 +22,9 @@ import urchin.fs.json as json
 import urchin.fs.tmdb as tmdb
 from urchin.fs.core import Stat, TemplateFS
 
-# FIXME prefix private methods?
 # FIXME inotify
 # FIXME disambiguation for collisions
 # FIXME cleanup for disallowed characters
-# FIXME configuration via file rather than options
 # FIXME unit tests
 
 """
@@ -88,13 +86,13 @@ class Entry(object):
         assert type(formatted_names) == set
         self.formatted_names = formatted_names
         self.results = [Result(name, self.path) for name in self.formatted_names]
-    # FIXME evaluate if we should make an inverted hash
-    def __hash__(self):
-        # FIXME should this take into account the metadata values?
-        return hash((self.path,)
-               + tuple(self.metadata_paths)
-               + tuple(self.formatted_names)
-               + tuple(self.metadata.keys()))
+    # TODO evaluate if we should make an inverted hash
+    #def __hash__(self):
+    #    # TODO should this take into account the metadata values?
+    #    return hash((self.path,)
+    #           + tuple(self.metadata_paths)
+    #           + tuple(self.formatted_names)
+    #           + tuple(self.metadata.keys()))
     def __repr__(self):
         return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(self.formatted_names))
 
@@ -122,10 +120,10 @@ PARENT_RESULT = Result(PARENT)
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
         self.plugin_search_paths = ["~/.urchin/plugins/"]
-        self.component_types = self.find_component_types()
+        self.component_types = self._find_component_types()
         self.component_keys = self.component_types.keys()
-        self.plugins = self.load_plugins()
-        self.plugin_components = self.find_plugin_components()
+        self.plugins = self._load_plugins()
+        self.plugin_components = self._find_plugin_components()
         self.original_working_directory = os.getcwd()
 
         super(UrchinFS, self).__init__(*args, **kwargs)
@@ -145,7 +143,7 @@ class UrchinFS(TemplateFS):
     # Plugin handling
     #
 
-    def find_component_types(self):
+    def _find_component_types(self):
         logging.debug("finding component types...")
         components = dict()
         for (name, cls) in plugin.__dict__.items():
@@ -154,8 +152,8 @@ class UrchinFS(TemplateFS):
         logging.debug("found component types %s" % components)
         return components
 
-    plugin_main_module = "__init__"
-    def load_plugins(self):
+    _plugin_main_module = "__init__"
+    def _load_plugins(self):
         """Load default plugins and plugins found in `plugin_search_paths`"""
         logging.debug("loading plugins...")
         # roughly like https://lkubuntu.wordpress.com/2012/10/02/writing-a-python-plugin-api/
@@ -172,18 +170,18 @@ class UrchinFS(TemplateFS):
                 else:
                     for name in os.listdir(plugin_path):
                         path = os.path.join(plugin_path, name)
-                        if os.path.isdir(path) and "%s.py" % self.plugin_main_module in os.listdir(path):
+                        if os.path.isdir(path) and "%s.py" % self._plugin_main_module in os.listdir(path):
                             try:
                                 info = imp.find_module("__init__", [path])
-                                plugins[name] = imp.load_module(self.plugin_main_module, info[0], info[1], info[2])
+                                plugins[name] = imp.load_module(self._plugin_main_module, info[0], info[1], info[2])
                                 logging.debug("found plugin module '%s'" % name)
                                 info[0].close()
                             except ImportError:
-                                logging.warning("plugin module '%s' has no '%s'" % (name, plugin_main_module))
+                                logging.warning("plugin module '%s' has no '%s'" % (name, _plugin_main_module))
         logging.debug("loaded plugins:\n%s" % pprint.pformat(plugins))
         return plugins
 
-    def find_plugin_components(self):
+    def _find_plugin_components(self):
         """Find all named plugin classes and sort them by the command-line parameter for which they are valid"""
         logging.debug("loading plugin components...")
         # find all named plugin classes
@@ -199,53 +197,50 @@ class UrchinFS(TemplateFS):
         logging.debug("loaded plugin components:\n%s" % pprint.pformat(plugin_components))
         return plugin_components
 
-    # FIXME OMG UGLY
-    plugin_class_name = "Plugin"
-    def configure_components(self, option_set, config):
-        # each "option set" describes the configuration of a specific source directory/way of formatting
+    _plugin_class_name = "Plugin"
+    def _configure_components_from_plugin(self, plugin_name):
+        if not plugin_name in self.plugins:
+            raise ConfigurationError("Found no plugin with name '%s'" % plugin_name)
+        plugin_module = self.plugins[plugin_name]
+        if not self._plugin_class_name in plugin_module.__dict__:
+            raise ConfigurationError("Found plugin module with name '%s', but no class named '%s'" % (plugin_name, self._plugin_class_name))
+        plugin_class = plugin_module.__dict__[self._plugin_class_name]
+        if not isinstance(plugin_class, type):
+            raise ConfigurationError("Found plugin module with name '%s', but '%s' is not a class" % (plugin_name, self._plugin_class_name))
+        plugin = plugin_class()
+        return {"indexer": plugin.indexer, "matcher": plugin.matcher, "extractor": plugin.extractor, "merger": plugin.merger, "munger": plugin.munger, "formatter":  plugin.formatter}
+
+    def _configure_components_from_options(self, option_set):
+        component_config = {"indexer": None, "matcher": default.DefaultMetadataMatcher, "extractor": None,
+                "merger": default.DefaultMerger, "munger": default.DefaultMunger, "formatter":  default.DefaultFormatter}
+        for component_key in self.component_keys:
+            if component_key in option_set:
+                component_name = option_set[component_key]
+                if component_name in self.plugin_components[component_key]:
+                    component_config[component_key] = self.plugin_components[component_key][component_name]
+                else:
+                    logging.debug("could not find plugin '%s'" % component_name)
+                    raise ConfigurationError("Could not find specified plugin '%s' for %s component" % (component_name, component_key))
+        return component_config
+
+    def _configure_components(self, option_set):
         logging.debug("configuring components for option_set %s..." % option_set)
-        plugin_config = {k: None for k in self.component_keys}
         if "plugin" in option_set:
-            if not option_set["plugin"] in self.plugins:
-                raise ConfigurationError("Found no plugin with name '%s'" % option_set["plugin"])
-            plugin_module = self.plugins[option_set["plugin"]]
-            if not self.plugin_class_name in plugin_module.__dict__:
-                raise ConfigurationError("Found plugin module with name '%s', but no class named '%s'" % (option_set["plugin"], self.plugin_class_name))
-            plugin_class = plugin_module.__dict__[self.plugin_class_name]
-            if not isinstance(plugin_class, type):
-                raise ConfigurationError("Found plugin module with name '%s', but '%s' is not a class" % (option_set["plugin"], self.plugin_class_name))
-            plugin = plugin_class()
-            plugin_config = {
-                    "indexer": plugin.indexer,
-                    "matcher": plugin.matcher,
-                    "extractor": plugin.extractor,
-                    "merger": plugin.merger,
-                    "munger": plugin.munger,
-                    "formatter":  plugin.formatter}
+            config = self._configure_components_from_plugin(option_set["plugin"])
         else:
-            plugin_config = {"indexer": None, "matcher": default.DefaultMetadataMatcher, "extractor": None,
-                    "merger": default.DefaultMerger, "munger": default.DefaultMunger, "formatter":  default.DefaultFormatter}
-            for component_key in self.component_keys:
-                if component_key in option_set:
-                    plugin_short_name = option_set[component_key]
-                    if plugin_short_name in self.plugin_components[component_key]:
-                        plugin_config[component_key] = self.plugin_components[component_key][plugin_short_name]
-                    else:
-                        logging.debug("could not find plugin '%s'" % plugin_short_name)
-                        raise ConfigurationError("Could not find specified plugin '%s' for %s component" % (plugin_short_name, component_key))
-        # ensure all components are defined
-        for k,v in plugin_config.iteritems():
-            if not v:
+            config = self._configure_components_from_options(option_set)
+        for k in self.component_keys:
+            if k not in config or not config[k]:
                 raise ConfigurationError("No component specified for '%s'" % k)
-        logging.debug("using plugin_config:\n%s" % pprint.pformat(plugin_config))
-        return {k: cls(config) for k,cls in plugin_config.iteritems()}
+        logging.debug("using component config:\n%s" % pprint.pformat(config))
+        return {k: cls(option_set) for k,cls in config.iteritems()}
 
     def _normalize_path(self, path):
         if not os.path.isabs(path):
             path = os.path.join(self.original_working_directory, path)
         return os.path.normpath(path)
 
-    def make_entries(self, components, path):
+    def _make_entries(self, components, path):
         path = self._normalize_path(path)
         entries = []
         indexed = components["indexer"].index(path)
@@ -309,11 +304,10 @@ class UrchinFS(TemplateFS):
         logging.debug("configuring filesystem...")
         self.mount_configurations = {}
         for option_set in self._get_option_sets():
-            config = dict() # FIXME which options should be here?
-            components = self.configure_components(option_set, config)
+            components = self._configure_components(option_set)
             logging.debug("components: %s" % pprint.pformat(components))
-            entries = self.make_entries(components, option_set["source"])
-            self.mount_configurations[option_set["source"]] = {"config": config, "components": components, "entries": entries}
+            entries = self._make_entries(components, option_set["source"])
+            self.mount_configurations[option_set["source"]] = {"config": option_set, "components": components, "entries": entries}
             if option_set["watch"]:
                 pass
                 # FIXME add inotify support
@@ -328,7 +322,7 @@ class UrchinFS(TemplateFS):
     # Lookups
     #
 
-    def strip_empty_prefix(self, parts):
+    def _strip_empty_prefix(self, parts):
         if len(parts) == 0:
             return parts
         cur = 0
@@ -338,16 +332,16 @@ class UrchinFS(TemplateFS):
             parts = parts[cur:]
         return parts
 
-    def split_path(self, path):
-        return self.split_path_recursive(os.path.normpath(path))
+    def _split_path(self, path):
+        return self._split_path_recursive(os.path.normpath(path))
 
-    def split_path_recursive(self, path):
+    def _split_path_recursive(self, path):
         """http://stackoverflow.com/a/15050936/320220"""
         a,b = os.path.split(path)
-        return (self.split_path(a) if len(a) and len(b) else []) + [b]
+        return (self._split_path(a) if len(a) and len(b) else []) + [b]
 
-    def get_results(self, path):
-        return self._get_results_from_parts(self.strip_empty_prefix(self.split_path(path)))
+    def _get_results(self, path):
+        return self._get_results_from_parts(self._strip_empty_prefix(self._split_path(path)))
 
     def _get_results_from_parts(self, parts):
         logging.debug("get_results_from_parts: %s" % parts)
@@ -445,7 +439,7 @@ class UrchinFS(TemplateFS):
         path = path.decode('utf_8')
         logging.debug("getattr: %s" % path)
         try:
-            results = self.get_results(path)
+            results = self._get_results(path)
             logging.debug("\t%s" % results)
             for r in results:
                 if r.name == CUR:
@@ -460,7 +454,7 @@ class UrchinFS(TemplateFS):
         path = path.decode('utf_8')
         logging.debug("access: %s (flags %s)" % (path, oct(flags)))
         try:
-            results = self.get_results(path)
+            results = self._get_results(path)
             logging.debug("\t%s" % results)
             if os.W_OK & flags == os.W_OK:
                 # wants write permission, fail
@@ -474,7 +468,7 @@ class UrchinFS(TemplateFS):
         path = path.decode('utf_8')
         logging.debug("opendir: %s" % path)
         try:
-            results = self.get_results(path)
+            results = self._get_results(path)
             logging.debug("\t%s" % results)
             return None
         except InvalidPathError:
@@ -485,7 +479,7 @@ class UrchinFS(TemplateFS):
         path = path.decode('utf_8')
         logging.debug("readdir: %s (offset %s, dh %s)" % (path, offset, dh))
         try:
-            results = self.get_results(path)
+            results = self._get_results(path)
             logging.debug("\t%s" % results)
             for result in results:
                 logging.debug("\tyeilding %s" % result)
@@ -498,7 +492,7 @@ class UrchinFS(TemplateFS):
         path = path.decode('utf_8')
         logging.debug("readlink: %s" % path)
         try:
-            results = self.get_results(path)
+            results = self._get_results(path)
             logging.debug("\t%s" % results)
             for r in results:
                 if r.name == CUR:
@@ -513,7 +507,7 @@ def main():
     server.multithreaded = 0
 
     # FIXME on error, with -f this seems to print duplicate messages to console
-    level = logging.DEBUG if "debug" in args.optlist else logging.ERROR
+    level = logging.DEBUG if "debug" in args.optlist else logging.INFO
     if args.getmod("foreground"):
         # FIXME this doesn't appear to properly output to the foreground
         logging.basicConfig(level=level)
