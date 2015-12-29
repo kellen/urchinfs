@@ -27,7 +27,7 @@ from urchin.fs.core import Stat, TemplateFS
 # FIXME cleanup for disallowed characters
 # FIXME unit tests
 
-logging.basicConfig(filename="LOG",level=logging.DEBUG,)
+logging.basicConfig()
 fuse.fuse_python_api = (0, 2)
 
 class ConfigurationError(fuse.FuseError):
@@ -117,8 +117,6 @@ class UrchinFS(TemplateFS):
         self.plugin_search_paths = ["~/.urchin/plugins/"]
         self.component_types = self._find_component_types()
         self.component_keys = self.component_types.keys()
-        self.plugins = self._load_plugins()
-        self.plugin_components = self._find_plugin_components()
         self.original_working_directory = os.getcwd()
 
         super(UrchinFS, self).__init__(*args, **kwargs)
@@ -126,6 +124,8 @@ class UrchinFS(TemplateFS):
         self.parser.add_option(mountopt="source", help="source directory")
         self.parser.add_option(mountopt="plugin", help="plugin name. if set, component options ignored")
         self.parser.add_option(mountopt="watch", help="watch the source directory for changes?")
+        self.parser.add_option(mountopt="log", help="the file to which to log")
+        self.parser.add_option(mountopt="loglevel", help="the log level", choices=['debug', 'info', 'warning', 'error', 'critical'])
         for k in self.component_keys:
             self.parser.add_option(mountopt=k, help="%s name" % k)
 
@@ -300,8 +300,35 @@ class UrchinFS(TemplateFS):
             # extract dict from optparse.Values instance
             return [{k:v for k,v in vars(options).items() if v}]
 
+    _logging_map = {
+            "debug": logging.DEBUG,
+            "info": logging.INFO,
+            "warning": logging.WARNING,
+            "error": logging.ERROR,
+            "critical": logging.CRITICAL
+            }
+    def _configure_logging(self):
+        # it would be nicer to be able to do this pre-init but the option parsing is then a pain
+        options = self.cmdline[0]
+        log = logging.getLogger()
+        if options.log:
+            if not os.path.isabs(options.log):
+                raise ConfigurationError("log path must be absolute")
+            # remove all old handlers and set the new one
+            fileh = logging.FileHandler(options.log, 'a')
+            for hdlr in log.handlers:
+                log.removeHandler(hdlr)
+                log.addHandler(fileh)
+        if options.loglevel:
+            if options.loglevel not in self._logging_map:
+                raise ConfigurationError("loglevel must be one of: %s" % ",".join(self._logging_map.keys()))
+            log.setLevel(self._logging_map[options.loglevel])
+
     def configure(self):
+        self._configure_logging()
         logging.debug("configuring filesystem...")
+        self.plugins = self._load_plugins()
+        self.plugin_components = self._find_plugin_components()
         self.mount_configurations = {}
         for option_set in self._get_option_sets():
             components = self._configure_components(option_set)
@@ -505,18 +532,6 @@ def main():
     server = UrchinFS(version="%prog " + __version__, dash_s_do='setsingle')
     args = server.parse(errex=1)
     server.multithreaded = 0
-
-    # FIXME on error, with -f this seems to print duplicate messages to console
-    #level = logging.DEBUG if "debug" in args.optlist else logging.INFO
-    #if args.getmod("foreground"):
-    #    # FIXME this doesn't appear to properly output to the foreground
-    #    logging.basicConfig(level=level)
-    #    logging.getLogger().addHandler(logging.StreamHandler())
-    #else:
-    #    # FIXME add option for logging to file
-    #    # FIXME if --log LOGFILE
-    #    logging.basicConfig(filename="LOG",level=level,)
-
     try:
         server.configure()
     except ConfigurationError, e:
