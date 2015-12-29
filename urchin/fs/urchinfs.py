@@ -24,7 +24,6 @@ from urchin.fs.core import Stat, TemplateFS
 
 # FIXME inotify
 # FIXME disambiguation for collisions
-# FIXME cleanup for disallowed characters: disallow leading/trailign whitespace, slashes, null byte, leading hyphen, all other unicode = ok
 # FIXME unit tests
 
 logging.basicConfig()
@@ -158,6 +157,30 @@ class UrchinFS(TemplateFS):
             path = os.path.join(self.original_working_directory, path)
         return os.path.normpath(path)
 
+    _name_regex = re.compile(u"^\s+|\s+$|^-+|[/\u0000-\u001F\u007f\u0085\u2028\u2029]", re.U)
+    def _clean_formatted_names(self, formatted_names):
+        """
+        repeatedly removes disallowed characters:
+        - leading whitespace
+        - leading hyphens
+        - trailing whitespace
+        - slashes
+        - control characters (NUL, BEL, TAB(!), etc)
+        - line breaks (\n, \r, \v, \f, file separator, group separator, record separator, NEL, line separator, paragraph separator)
+        """
+        names = []
+        for idx, name in enumerate(formatted_names):
+            while True:
+                new = self._name_regex.sub("", name)
+                if new == name:
+                    break
+                name = new
+            if name:
+                names.append(name)
+            else:
+                logging.debug("ignoring name [%s]; after replacing disallowed characters, name is empty." % formatted_names[idx])
+        return set(names)
+
     def _make_entries(self, components, path):
         path = self._normalize_path(path)
         entries = []
@@ -174,6 +197,7 @@ class UrchinFS(TemplateFS):
             logging.debug("munged metadata: %s..." % pprint.pformat(metadata)[:500])
             formatted_names = components["formatter"].format(item, metadata)
             logging.debug("formatted: %s..." % pprint.pformat(formatted_names))
+            formatted_names = self._clean_formatted_names(formatted_names)
             entries.append(Entry(item, sources, metadata, formatted_names))
         logging.debug("entries: %s" % pprint.pformat(entries))
         return entries
