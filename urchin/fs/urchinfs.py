@@ -24,93 +24,11 @@ from urchin.fs.core import Stat, TemplateFS
 
 # FIXME inotify
 # FIXME disambiguation for collisions
-# FIXME cleanup for disallowed characters
+# FIXME cleanup for disallowed characters: disallow leading/trailign whitespace, slashes, null byte, leading hyphen, all other unicode = ok
 # FIXME unit tests
 
 logging.basicConfig()
 fuse.fuse_python_api = (0, 2)
-
-class ConfigurationError(fuse.FuseError):
-    pass
-
-class InvalidPathError(Exception):
-    pass
-
-class immutable(type):
-    """simplistic immutable contract similar to http://stackoverflow.com/a/18092572/320220"""
-    def __init__(cls, classname, parents, attributes):
-        cls.__original_init__ = cls.__init__
-        cls.__original_setattr__ = cls.__setattr__
-        cls.__original_delattr__ = cls.__delattr__
-        cls.__immutable__ = True
-
-        def init(self, *args, **kwargs):
-            object.__setattr__(self, "__immutable__", False)
-            self.__original_init__(*args, **kwargs)
-            self.__immutable__ = True
-        def setattr(self, name, value):
-            if self.__immutable__:
-                raise TypeError("immutable")
-            self.__original_setattr__(name, value)
-        def delattr(self, name):
-            if self.__immutable__:
-                raise TypeError("immutable")
-            self.__original_delattr__(name)
-
-        cls.__init__ = init
-        cls.__setattr__ = setattr
-        cls.__delattr__ = delattr
-
-class Entry(object):
-    """
-    An entry in the filesystem.
-    `path` is the actual path of the file/directory
-    `metadata_paths` are the paths from which `metadata` is derived
-    `metadata` is the metadata associated with the entry
-    `formatted_names` are the names by which the entry will be displayed
-    """
-    __metaclass__ = immutable
-    def __init__(self, path, metadata_paths, metadata, formatted_names):
-        assert type(path) == str
-        self.path = path
-        assert type(metadata_paths) == set
-        self.metadata_paths = metadata_paths
-        assert type(metadata) == dict
-        self.metadata = metadata
-        assert type(formatted_names) == set
-        self.formatted_names = formatted_names
-        self.results = [Result(name, self.path) for name in self.formatted_names]
-    # TODO evaluate if we should make an inverted hash
-    #def __hash__(self):
-    #    # TODO should this take into account the metadata values?
-    #    return hash((self.path,)
-    #           + tuple(self.metadata_paths)
-    #           + tuple(self.formatted_names)
-    #           + tuple(self.metadata.keys()))
-    def __repr__(self):
-        return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(self.formatted_names))
-
-class Result(object):
-    """represntation of a directory/symlink"""
-    def __init__(self, name, destination=None):
-        self.name = name
-        self.destination = destination
-        self.mode = (stat.S_IFLNK | 0777) if self.destination else (stat.S_IFDIR | 0755)
-        # "The size of a symbolic link is the length of the
-        # pathname it contains, without a terminating null byte."
-        self.size = len(name) if self.destination else Stat.DIRSIZE
-    def __repr__(self):
-        return "<Result %s>" % (self.name if self.destination is None else "%s -> %s" % (self.name, self.destination))
-
-AND = u"^"
-OR = u"+"
-CUR = u"."
-PARENT= u".."
-
-AND_RESULT = Result(AND)
-OR_RESULT = Result(OR)
-CUR_RESULT = Result(CUR)
-PARENT_RESULT = Result(PARENT)
 
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
@@ -527,6 +445,88 @@ class UrchinFS(TemplateFS):
         except InvalidPathError:
             pass
         return -errno.ENOENT
+
+class ConfigurationError(fuse.FuseError):
+    pass
+
+class InvalidPathError(Exception):
+    pass
+
+class immutable(type):
+    """simplistic immutable contract similar to http://stackoverflow.com/a/18092572/320220"""
+    def __init__(cls, classname, parents, attributes):
+        cls.__original_init__ = cls.__init__
+        cls.__original_setattr__ = cls.__setattr__
+        cls.__original_delattr__ = cls.__delattr__
+        cls.__immutable__ = True
+
+        def init(self, *args, **kwargs):
+            object.__setattr__(self, "__immutable__", False)
+            self.__original_init__(*args, **kwargs)
+            self.__immutable__ = True
+        def setattr(self, name, value):
+            if self.__immutable__:
+                raise TypeError("immutable")
+            self.__original_setattr__(name, value)
+        def delattr(self, name):
+            if self.__immutable__:
+                raise TypeError("immutable")
+            self.__original_delattr__(name)
+
+        cls.__init__ = init
+        cls.__setattr__ = setattr
+        cls.__delattr__ = delattr
+
+class Entry(object):
+    """
+    An entry in the filesystem.
+    `path` is the actual path of the file/directory
+    `metadata_paths` are the paths from which `metadata` is derived
+    `metadata` is the metadata associated with the entry
+    `formatted_names` are the names by which the entry will be displayed
+    """
+    __metaclass__ = immutable
+    def __init__(self, path, metadata_paths, metadata, formatted_names):
+        assert type(path) == str
+        self.path = path
+        assert type(metadata_paths) == set
+        self.metadata_paths = metadata_paths
+        assert type(metadata) == dict
+        self.metadata = metadata
+        assert type(formatted_names) == set
+        self.formatted_names = formatted_names
+        self.results = [Result(name, self.path) for name in self.formatted_names]
+    # TODO evaluate if we should make an inverted hash
+    #def __hash__(self):
+    #    # TODO should this take into account the metadata values?
+    #    return hash((self.path,)
+    #           + tuple(self.metadata_paths)
+    #           + tuple(self.formatted_names)
+    #           + tuple(self.metadata.keys()))
+    def __repr__(self):
+        return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(self.formatted_names))
+
+class Result(object):
+    """represntation of a directory/symlink"""
+    def __init__(self, name, destination=None):
+        self.name = name
+        self.destination = destination
+        self.mode = (stat.S_IFLNK | 0777) if self.destination else (stat.S_IFDIR | 0755)
+        # "The size of a symbolic link is the length of the
+        # pathname it contains, without a terminating null byte."
+        self.size = len(name) if self.destination else Stat.DIRSIZE
+    def __repr__(self):
+        return "<Result %s>" % (self.name if self.destination is None else "%s -> %s" % (self.name, self.destination))
+
+AND = u"^"
+OR = u"+"
+CUR = u"."
+PARENT= u".."
+
+AND_RESULT = Result(AND)
+OR_RESULT = Result(OR)
+CUR_RESULT = Result(CUR)
+PARENT_RESULT = Result(PARENT)
 
 def main():
     server = UrchinFS(version="%prog " + __version__, dash_s_do='setsingle')
