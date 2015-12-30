@@ -274,7 +274,6 @@ class UrchinFS(TemplateFS):
             "critical": logging.CRITICAL
             }
     def _configure_logging(self):
-        # it would be nicer to be able to do this pre-init but the option parsing is then a pain
         options = self.cmdline[0]
         log = logging.getLogger()
         if options.log:
@@ -566,7 +565,7 @@ class Entry(object):
         return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(self.formatted_names))
 
 class Result(object):
-    """represntation of a directory/symlink"""
+    """representation of a directory/symlink"""
     def __init__(self, name, destination=None):
         self.name = name
         self.destination = destination
