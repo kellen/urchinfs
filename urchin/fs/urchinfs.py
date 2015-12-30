@@ -23,7 +23,6 @@ import urchin.fs.tmdb as tmdb
 from urchin.fs.core import Stat, TemplateFS
 
 # FIXME inotify
-# FIXME disambiguation for collisions
 # FIXME unit tests
 
 logging.basicConfig()
@@ -36,6 +35,11 @@ class UrchinFS(TemplateFS):
         self.component_keys = self.component_types.keys()
         self.original_working_directory = os.getcwd()
 
+        self.mount_configurations = {}
+        self.plugins = {}
+        self.plugin_components = {}
+        self._disambiguation_name_set = set()
+
         super(UrchinFS, self).__init__(*args, **kwargs)
         self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
         self.parser.add_option(mountopt="source", help="source directory")
@@ -47,7 +51,7 @@ class UrchinFS(TemplateFS):
             self.parser.add_option(mountopt=k, help="%s name" % k)
 
     #
-    # Plugin handling
+    # Plugin/component handling
     #
 
     def _find_component_types(self):
@@ -152,10 +156,9 @@ class UrchinFS(TemplateFS):
         logging.debug("using component config:\n%s" % pprint.pformat(config))
         return {k: cls(option_set) for k,cls in config.iteritems()}
 
-    def _normalize_path(self, path):
-        if not os.path.isabs(path):
-            path = os.path.join(self.original_working_directory, path)
-        return os.path.normpath(path)
+    #
+    # Indexing
+    #
 
     _name_regex = re.compile(u"^\s+|\s+$|^-+|[/\u0000-\u001F\u007f\u0085\u2028\u2029]", re.U)
     def _clean_formatted_names(self, formatted_names):
@@ -181,6 +184,25 @@ class UrchinFS(TemplateFS):
                 logging.debug("ignoring name [%s]; after replacing disallowed characters, name is empty." % formatted_names[idx])
         return set(names)
 
+    def _disambiguate_formatted_names(self, formatted_names):
+        logging.debug("current disambig set: %s" % self._disambiguation_name_set)
+        names = set(formatted_names)
+        for name in formatted_names:
+            if name in self._disambiguation_name_set:
+                newname = name
+                newidx = 1
+                while newname in self._disambiguation_name_set:
+                    newidx = newidx + 1
+                    newname = "%s (%d)" % (name, newidx)
+                logging.debug("disambiguated [%s] -> [%s]" % (name, newname))
+                names.remove(name)
+                names.add(newname)
+                self._disambiguation_name_set.add(newname)
+            else:
+                self._disambiguation_name_set.add(name)
+        logging.debug("updated disambig set: %s" % self._disambiguation_name_set)
+        return names
+
     def _make_entries(self, components, path):
         path = self._normalize_path(path)
         entries = []
@@ -198,12 +220,14 @@ class UrchinFS(TemplateFS):
             formatted_names = components["formatter"].format(item, metadata)
             logging.debug("formatted: %s..." % pprint.pformat(formatted_names))
             formatted_names = self._clean_formatted_names(formatted_names)
+            formatted_names = self._disambiguate_formatted_names(formatted_names)
+            logging.debug("cleaned formatted: %s..." % pprint.pformat(formatted_names))
             entries.append(Entry(item, sources, metadata, formatted_names))
         logging.debug("entries: %s" % pprint.pformat(entries))
         return entries
 
     #
-    # init
+    # Initialization
     #
 
     def fsinit(self):
@@ -266,12 +290,7 @@ class UrchinFS(TemplateFS):
                 raise ConfigurationError("loglevel must be one of: %s" % ",".join(self._logging_map.keys()))
             log.setLevel(self._logging_map[options.loglevel])
 
-    def configure(self):
-        self._configure_logging()
-        logging.debug("configuring filesystem...")
-        self.plugins = self._load_plugins()
-        self.plugin_components = self._find_plugin_components()
-        self.mount_configurations = {}
+    def _create_mount_configurations(self):
         for option_set in self._get_option_sets():
             components = self._configure_components(option_set)
             logging.debug("components: %s" % pprint.pformat(components))
@@ -284,12 +303,24 @@ class UrchinFS(TemplateFS):
                 # FIXME add watches
                 # FIXME decide where to update things
                 # FIXME check the system inotify limit and warn if watches exceed
+
+    def configure(self):
+        self._configure_logging()
+        logging.debug("configuring filesystem...")
+        self.plugins = self._load_plugins()
+        self.plugin_components = self._find_plugin_components()
+        self._create_mount_configurations()
         self.entries = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
         logging.debug("configured filesystem")
 
     #
-    # Lookups
+    # util
     #
+
+    def _normalize_path(self, path):
+        if not os.path.isabs(path):
+            path = os.path.join(self.original_working_directory, path)
+        return os.path.normpath(path)
 
     def _strip_empty_prefix(self, parts):
         if len(parts) == 0:
@@ -308,6 +339,10 @@ class UrchinFS(TemplateFS):
         """http://stackoverflow.com/a/15050936/320220"""
         a,b = os.path.split(path)
         return (self._split_path(a) if len(a) and len(b) else []) + [b]
+
+    #
+    # Lookups
+    #
 
     def _get_results(self, path):
         return self._get_results_from_parts(self._strip_empty_prefix(self._split_path(path)))
@@ -362,7 +397,7 @@ class UrchinFS(TemplateFS):
                     logging.debug("current_valid_values: %s" % ','.join(current_valid_values))
                     raise InvalidPathError("invalid value [%s]" % part)
                 current_valid_values = current_valid_values - set([part])
-                state[current_key].update([part])
+                state[current_key].add(part)
                 # lookahead, and if the next token is _not_ an OR,
                 # filter the entries by the current facet
                 if is_last or (not is_last and parts[index+1] != OR):
