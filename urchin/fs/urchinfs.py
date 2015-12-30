@@ -22,7 +22,6 @@ import urchin.fs.json as json
 import urchin.fs.tmdb as tmdb
 from urchin.fs.core import Stat, TemplateFS
 
-# FIXME inotify
 # FIXME unit tests
 
 logging.basicConfig()
@@ -297,6 +296,7 @@ class UrchinFS(TemplateFS):
             self.mount_configurations[option_set["source"]] = {"config": option_set, "components": components, "entries": entries}
             if option_set["watch"]:
                 pass
+                # FIXME inotify
                 # FIXME add inotify support
                 #self.inotify_fd = inotifyx.init()
                 # FIXME add watches
@@ -349,7 +349,7 @@ class UrchinFS(TemplateFS):
     def _get_results_from_parts(self, parts):
         logging.debug("get_results_from_parts: %s" % parts)
         if not parts: # root dir
-            return [result for entry in self.entries for result in entry.results] + [AND_RESULT, CUR_RESULT, PARENT_RESULT]
+            return [result for entry in self.entries for result in entry.results] + [_AND_RESULT, _CUR_RESULT, _PARENT_RESULT]
 
         # fake enum
         class Parsed:
@@ -367,13 +367,13 @@ class UrchinFS(TemplateFS):
         for index,part in enumerate(parts):
             is_last = index == last_index
 
-            if part == AND:
+            if part == _AND:
                 last = Parsed.AND
                 current_key = None
                 current_valid_values = set()
                 current_valid_keys = set([key for key in entry.metadata.keys() for entry in found]) - set(state.keys())
                 if is_last:
-                    return [Result(key) for key in current_valid_keys] + [CUR_RESULT, PARENT_RESULT]
+                    return [Result(key) for key in current_valid_keys] + [_CUR_RESULT, _PARENT_RESULT]
             elif last == Parsed.AND:
                 last = Parsed.KEY
                 if part not in current_valid_keys:
@@ -385,11 +385,11 @@ class UrchinFS(TemplateFS):
                 state[current_key] = set()
                 current_valid_values = set([v for f in found for k,values in f.metadata.iteritems() for v in values if k == current_key])
                 if is_last:
-                    return [Result(value) for value in current_valid_values] + [CUR_RESULT, PARENT_RESULT]
-            elif last == Parsed.VAL and part == OR:
+                    return [Result(value) for value in current_valid_values] + [_CUR_RESULT, _PARENT_RESULT]
+            elif last == Parsed.VAL and part == _OR:
                 last = Parsed.OR
                 if is_last:
-                    return [Result(value) for value in current_valid_values] + [CUR_RESULT, PARENT_RESULT]
+                    return [Result(value) for value in current_valid_values] + [_CUR_RESULT, _PARENT_RESULT]
             elif last == Parsed.KEY or last == Parsed.OR:
                 last = Parsed.VAL
                 if part not in current_valid_values:
@@ -399,7 +399,7 @@ class UrchinFS(TemplateFS):
                 state[current_key].add(part)
                 # lookahead, and if the next token is _not_ an OR,
                 # filter the entries by the current facet
-                if is_last or (not is_last and parts[index+1] != OR):
+                if is_last or (not is_last and parts[index+1] != _OR):
                     newfound = []
                     logging.debug("finding %s -> %s" % (current_key, state[current_key]))
                     for e in found:
@@ -415,12 +415,12 @@ class UrchinFS(TemplateFS):
                             newfound.append(e)
                     found = newfound
                 if is_last:
-                    ret = [r for f in found for r in f.results] + [CUR_RESULT, PARENT_RESULT]
+                    ret = [r for f in found for r in f.results] + [_CUR_RESULT, _PARENT_RESULT]
                     # add AND and OR if appropriate
                     if len(current_valid_values) > 0:
-                        ret = ret + [OR_RESULT]
+                        ret = ret + [_OR_RESULT]
                     if len(current_valid_keys) > 0:
-                        ret = ret + [AND_RESULT]
+                        ret = ret + [_AND_RESULT]
                     return ret
             else:
                 last = Parsed.DIR
@@ -431,7 +431,7 @@ class UrchinFS(TemplateFS):
                 for f in found:
                     for r in f.results:
                         if r.name == part:
-                            return [Result(CUR, r.destination)]
+                            return [Result(_CUR, r.destination)]
                 raise InvalidPathError("invalid dir name [%s]" % part)
 
     #
@@ -445,7 +445,7 @@ class UrchinFS(TemplateFS):
             results = self._get_results(path)
             logging.debug("\t%s" % results)
             for r in results:
-                if r.name == CUR:
+                if r.name == _CUR:
                     result_stat = Stat(st_mode = r.mode, st_size = r.size)
                     logging.debug("\t%s" % result_stat)
                     return result_stat
@@ -498,7 +498,7 @@ class UrchinFS(TemplateFS):
             results = self._get_results(path)
             logging.debug("\t%s" % results)
             for r in results:
-                if r.name == CUR:
+                if r.name == _CUR:
                     return r.destination
         except InvalidPathError:
             pass
@@ -510,7 +510,7 @@ class ConfigurationError(fuse.FuseError):
 class InvalidPathError(Exception):
     pass
 
-class immutable(type):
+class _immutable(type):
     """simplistic immutable contract similar to http://stackoverflow.com/a/18092572/320220"""
     def __init__(cls, classname, parents, attributes):
         cls.__original_init__ = cls.__init__
@@ -543,7 +543,7 @@ class Entry(object):
     `metadata` is the metadata associated with the entry
     `formatted_names` are the names by which the entry will be displayed
     """
-    __metaclass__ = immutable
+    __metaclass__ = _immutable
     def __init__(self, path, metadata_paths, metadata, formatted_names):
         assert type(path) == str
         self.path = path
@@ -576,15 +576,15 @@ class Result(object):
     def __repr__(self):
         return "<Result %s>" % (self.name if self.destination is None else "%s -> %s" % (self.name, self.destination))
 
-AND = u"^"
-OR = u"+"
-CUR = u"."
-PARENT= u".."
+_AND = u"^"
+_OR = u"+"
+_CUR = u"."
+_PARENT= u".."
 
-AND_RESULT = Result(AND)
-OR_RESULT = Result(OR)
-CUR_RESULT = Result(CUR)
-PARENT_RESULT = Result(PARENT)
+_AND_RESULT = Result(_AND)
+_OR_RESULT = Result(_OR)
+_CUR_RESULT = Result(_CUR)
+_PARENT_RESULT = Result(_PARENT)
 
 def main():
     server = UrchinFS(version="%prog " + __version__, dash_s_do='setsingle')
