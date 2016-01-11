@@ -90,8 +90,7 @@ Installation
 ------------
 
 ```
-sudo apt-get install fuse libfuse-dev python-fuse
-python-mutagen
+sudo apt-get install fuse libfuse-dev python-fuse python-mutagen
 ```
 
 ```
