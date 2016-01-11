@@ -70,8 +70,6 @@ source
     the source directory to index, required.
 plugin
     the short name for the plugin class. If set, all component options are ignored.
-watch
-    watch the source directory for changes via inotify?
 COMPONENTS
     indexer
         the short name for the indexer class, required if no plugin is specified.
@@ -179,19 +177,19 @@ EXAMPLES
 
 From the command line::
 
-   urchinfs /mountpoint -o source=/srv/source,indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default,watch=true
+   urchinfs /mountpoint -o source=/srv/source,indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default
 
 To produce the same mount in `/etc/fstab`::
 
-    urchinfs /mountpoint fuse source=/srv/source,indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default,watch=true 0 0 
+    urchinfs /mountpoint fuse source=/srv/source,indexer=json,matcher=json,extractor=json,merger=default,munger=tmdb,formatter=default 0 0 
 
 If using a plugin, these can be shortened::
 
-   urchinfs /mountpoint -o source=/srv/source,plugin=tmdb,watch=true
+   urchinfs /mountpoint -o source=/srv/source,plugin=tmdb
 
 And in `/etc/fstab`::
 
-    urchinfs /mountpoint fuse source=/srv/source,plugin=tmdb,watch=true 0 0 
+    urchinfs /mountpoint fuse source=/srv/source,plugin=tmdb 0 0 
 
 PLUGINS
 =======

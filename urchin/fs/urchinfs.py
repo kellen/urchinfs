@@ -13,7 +13,6 @@ import re
 import pprint
 import fuse
 import imp
-import inotify
 
 from urchin import __version__
 import urchin.fs.plugin as plugin
@@ -44,7 +43,6 @@ class UrchinFS(TemplateFS):
         self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
         self.parser.add_option(mountopt="source", help="source directory")
         self.parser.add_option(mountopt="plugin", help="plugin name. if set, component options ignored")
-        self.parser.add_option(mountopt="watch", action="store_true", help="watch the source directory for changes?")
         self.parser.add_option(mountopt="log", help="the file to which to log")
         self.parser.add_option(mountopt="loglevel", help="the log level", choices=['debug', 'info', 'warning', 'error', 'critical'])
         for k in self.component_keys:
@@ -217,16 +215,9 @@ class UrchinFS(TemplateFS):
         formatted_names = self._clean_formatted_names(formatted_names)
         formatted_names = self._disambiguate_formatted_names(formatted_names)
         logging.debug("cleaned formatted: %s..." % pprint.pformat(formatted_names))
-        inotify_adapter = None
-        if watch:
-            # FIXME check the system inotify limit and warn if watches exceed
-            inotify_adapter = inotify.adapters.Inotify()
-            inotify_adapter.add_watch(item)
-            for source in sources:
-                inotify_adapter.add_watch(source)
-        return Entry(item, sources, metadata, formatted_names, inotify_adapter))
+        return Entry(item, sources, metadata, formatted_names))
 
-    def _make_entries(self, components, path, watch):
+    def _make_entries(self, components, path):
         path = self._normalize_path(path)
         entries = []
         indexed = components["indexer"].index(path)
@@ -303,13 +294,11 @@ class UrchinFS(TemplateFS):
         for option_set in self._get_option_sets():
             components = self._configure_components(option_set)
             logging.debug("components: %s" % pprint.pformat(components))
-            watch = "watch" in option_set and option_set["watch"]
-            entries = self._make_entries(components, option_set["source"], watch)
+            entries = self._make_entries(components, option_set["source"])
             self.mount_configurations[option_set["source"]] = {
                     "config": option_set,
                     "components": components,
                     "entries": entries,
-                    "watch": watch
                     }
 
     def configure(self):
@@ -349,62 +338,10 @@ class UrchinFS(TemplateFS):
         return (self._split_path(a) if len(a) and len(b) else []) + [b]
 
     #
-    # inotify
-    #
-
-    def _update_inotify(self):
-        # TODO add configurable inotify update time, so we're not polling all the time
-        for source,configuration in self.mount_configurations.items():
-            remove_entries = []
-            for entry in configuration["entries"]:
-                if entry.inotify_adapter:
-                    for event in i.event_gen():
-                        if event is not None:
-                            (header, type_names, watch_path, filename) = event
-                            # wd = watch descriptor
-                            # mask = "mask describing the event"
-                            # cookie = "unique cookie for associating related events"
-                            # len = size of the name field
-                            # type_names = string versions of what's in mask
-                            # watch_path = item/source path
-                            # filename = the thing that was modified, e.g. file "a" created
-                            _LOGGER.info("WD=(%d) MASK=(%d) COOKIE=(%d) LEN=(%d) MASK->NAMES=%s WATCH-PATH=[%s] FILENAME=[%s]",
-                                    header.wd, header.mask, header.cookie, header.len, type_names, watch_path, filename)
-
-                            # ignore events on already-watched paths
-                            full_path = watch_path
-                            if filename:
-                                full_path = os.path.join(watch_path, filename)
-                                if full_path in entry.metadata_paths:
-                                    continue
-                            if "IN_CREATE" in type_names:
-                                # FIXME re-run entry creation
-                                pass
-                            if "IN_CLOSE_WRITE" in type_names or "IN_MODIFY" in type_names:
-                                # re-run entry creation
-                                pass
-                            if "IN_DELETE_SELF" in type_names:
-                                remove_entries.append(entry)
-                            if "IN_MOVE_SELF" in type_names:
-                                # FIXME how 
-                                if 
-                                
-                                pass
-                            if "IN_MOVED_FROM" in type_names:
-                                # FIXME file moved from here, update
-                                pass
-                            if "IN_MOVED_TO" in type_names:
-                                # FIXME file moved to here. update if necessary
-                            if "IN_DELETE" in type_names:
-                                # FIXME file deleted from here, do nothing?
-                                pass
-
-    #
     # Lookups
     #
 
     def _get_results(self, path):
-        self._update_inotify()
         return self._get_results_from_parts(self._strip_empty_prefix(self._split_path(path)))
 
     def _get_results_from_parts(self, parts):
@@ -605,7 +542,7 @@ class Entry(object):
     `formatted_names` are the names by which the entry will be displayed
     """
     __metaclass__ = _immutable
-    def __init__(self, path, metadata_paths, metadata, formatted_names, inotify_adapter):
+    def __init__(self, path, metadata_paths, metadata, formatted_names):
         assert type(path) == str
         self.path = path
         assert type(metadata_paths) == set
@@ -615,7 +552,6 @@ class Entry(object):
         assert type(formatted_names) == set
         self.formatted_names = formatted_names
         self.results = [Result(name, self.path) for name in self.formatted_names]
-        self.inotify_adapter = inotify_adapter
     # TODO evaluate if we should make an inverted hash
     #def __hash__(self):
     #    # TODO should this take into account the metadata values?
