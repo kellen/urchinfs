@@ -294,14 +294,16 @@ class UrchinFS(TemplateFS):
     def _configure_logging(self):
         options = self.cmdline[0]
         log = logging.getLogger()
+        formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
         if options.log:
             if not os.path.isabs(options.log):
                 raise ConfigurationError("log path must be absolute")
-            # remove all old handlers and set the new one
             fileh = logging.FileHandler(options.log, 'a')
+            fileh.setFormatter(formatter)
+            # remove all old handlers and set the new one
             for hdlr in log.handlers:
                 log.removeHandler(hdlr)
-                log.addHandler(fileh)
+            log.addHandler(fileh)
         if options.loglevel:
             if options.loglevel not in self._logging_map:
                 raise ConfigurationError("loglevel must be one of: %s" % ",".join(self._logging_map.keys()))
