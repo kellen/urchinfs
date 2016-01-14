@@ -13,6 +13,7 @@ import re
 import pprint
 import fuse
 import imp
+import time
 
 from urchin import __version__
 import urchin.fs.plugin as plugin
@@ -37,12 +38,14 @@ class UrchinFS(TemplateFS):
         self.mount_configurations = {}
         self.plugins = {}
         self.plugin_components = {}
-        self._disambiguation_name_set = set()
+        self._disambiguation = dict()
+        self.refresh = False
 
         super(UrchinFS, self).__init__(*args, **kwargs)
         self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
         self.parser.add_option(mountopt="source", help="source directory")
         self.parser.add_option(mountopt="plugin", help="plugin name. if set, component options ignored")
+        self.parser.add_option(mountopt="refresh", type="int", default=0, help="time before doing a full refresh, in seconds. 0 (default) will not refresh.")
         self.parser.add_option(mountopt="log", help="the file to which to log")
         self.parser.add_option(mountopt="loglevel", help="the log level", choices=['debug', 'info', 'warning', 'error', 'critical'])
         for k in self.component_keys:
@@ -158,12 +161,13 @@ class UrchinFS(TemplateFS):
     # Indexing
     #
 
-    _name_regex = re.compile(u"^\s+|\s+$|^-+|[/\u0000-\u001F\u007f\u0085\u2028\u2029]", re.U)
+    _name_regex = re.compile(u"^\s+|\s+$|^-+|^~+|[/\u0000-\u001F\u007f\u0085\u2028\u2029]", re.U)
     def _clean_formatted_names(self, formatted_names):
         """
         repeatedly removes disallowed characters:
         - leading whitespace
         - leading hyphens
+        - leading tilde
         - trailing whitespace
         - slashes
         - control characters (NUL, BEL, TAB(!), etc)
@@ -183,47 +187,60 @@ class UrchinFS(TemplateFS):
         return set(names)
 
     def _disambiguate_formatted_names(self, formatted_names):
-        logging.debug("current disambig set: %s" % self._disambiguation_name_set)
+        """return a tuple and a disambiguation number for each name in formatted_names"""
+        logging.debug("current disambig set: %s" % self._disambiguation)
         names = set(formatted_names)
+        out = []
         for name in formatted_names:
-            if name in self._disambiguation_name_set:
-                newname = name
-                newidx = 1
-                while newname in self._disambiguation_name_set:
-                    newidx = newidx + 1
-                    newname = "%s (%d)" % (name, newidx)
-                logging.debug("disambiguated [%s] -> [%s]" % (name, newname))
-                names.remove(name)
-                names.add(newname)
-                self._disambiguation_name_set.add(newname)
-            else:
-                self._disambiguation_name_set.add(name)
-        logging.debug("updated disambig set: %s" % self._disambiguation_name_set)
-        return names
+            idx = 0
+            if name in self._disambiguation:
+                idx = self._disambiguation[name] + 1
+            self._disambiguation[name] = idx
+            out.append((name, idx))
+        logging.debug("updated disambig set: %s" % self._disambiguation)
+        return out
 
-    def _make_entry(self, item, components):
-        sources = components["matcher"].match(item)
-        logging.debug("sources: %s" % pprint.pformat(sources))
+    def _make_entry(self, item_path, components, old_entry=None):
+        sources = components["matcher"].match(item_path)
         raw_metadata = {source: components["extractor"].extract(source) for source in sources}
-        logging.debug("raw metadata: %s..." % pprint.pformat(raw_metadata)[:500])
         combined_metadata = components["merger"].merge(raw_metadata)
-        logging.debug("combined metadata: %s..." % pprint.pformat(combined_metadata)[:500])
         metadata = components["munger"].mung(combined_metadata)
-        logging.debug("munged metadata: %s..." % pprint.pformat(metadata)[:500])
-        formatted_names = components["formatter"].format(item, metadata)
-        logging.debug("formatted: %s..." % pprint.pformat(formatted_names))
-        formatted_names = self._clean_formatted_names(formatted_names)
-        formatted_names = self._disambiguate_formatted_names(formatted_names)
-        logging.debug("cleaned formatted: %s..." % pprint.pformat(formatted_names))
-        return Entry(item, sources, metadata, formatted_names))
+        formatted_names = components["formatter"].format(item_path, metadata)
+        cleaned_formatted_names = self._clean_formatted_names(formatted_names)
+        disambiguated_cleaned_formatted_names = []
 
-    def _make_entries(self, components, path):
+        if old_entry:
+            for name in cleaned_formatted_names:
+                for old_name,idx in old_entry.name_tuples:
+                    if old_name == name:
+                        disambiguated_cleaned_formatted_names.append((old_name,idx))
+                        break
+            remove = [name for name,_ in disambiguated_cleaned_formatted_names]
+            cleaned_formatted_names = [name for name in cleaned_formatted_names if name not in remove]
+
+        disambiguated_cleaned_formatted_names.extend(self._disambiguate_formatted_names(cleaned_formatted_names))
+        logging.debug("cleaned and disambiguated and formatted: %s..." % pprint.pformat(disambiguated_cleaned_formatted_names))
+        return Entry(item_path, sources, metadata, disambiguated_cleaned_formatted_names)
+
+    def _make_entries(self, components, path, old_entries=None):
+        """
+        make the entries for `path` given the defined `components`
+        if `old_entries` is set, if a matching entry is found, its matching formatted paths are retained
+        """
         path = self._normalize_path(path)
         entries = []
         indexed = components["indexer"].index(path)
-        logging.debug("indexed path %s gave items: %s" % (path, pprint.pformat(indexed)))
-        for item in indexed:
-            entries.append(self._make_entry(item, components))
+        logging.debug("indexed path %s gave item paths: %s" % (path, pprint.pformat(indexed)))
+        for item_path in indexed:
+            from_old = False
+            if old_entries:
+                for old_entry in old_entries:
+                    if old_entry.path == item_path:
+                        from_old = True
+                        entries.append(self._make_entry(item_path, components, old_entry))
+                        break
+            if not from_old:
+                entries.append(self._make_entry(item_path, components))
         logging.debug("entries: %s" % pprint.pformat(entries))
         return entries
 
@@ -295,11 +312,26 @@ class UrchinFS(TemplateFS):
             components = self._configure_components(option_set)
             logging.debug("components: %s" % pprint.pformat(components))
             entries = self._make_entries(components, option_set["source"])
+            refresh = 0
+            if "refresh" in option_set:
+                refresh = option_set["refresh"]
+            if refresh != 0:
+                self.refresh = True # set if any mount config will refresh
             self.mount_configurations[option_set["source"]] = {
                     "config": option_set,
                     "components": components,
                     "entries": entries,
+                    "refresh": refresh,
+                    "last_update": time.time(),
                     }
+
+    def _refresh(self):
+        for source,config in self.mount_configurations.items():
+            if config["refresh"] > 0:
+                if time.time() - config["last_update"] > config["refresh"]:
+                    logging.debug("refreshing %s" % source)
+                    config["entries"] = self._make_entries(config["components"], source, config["entries"])
+                    config["last_update"] = time.clock()
 
     def configure(self):
         self._configure_logging()
@@ -307,7 +339,6 @@ class UrchinFS(TemplateFS):
         self.plugins = self._load_plugins()
         self.plugin_components = self._find_plugin_components()
         self._create_mount_configurations()
-        self.entries = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
         logging.debug("configured filesystem")
 
     #
@@ -342,18 +373,20 @@ class UrchinFS(TemplateFS):
     #
 
     def _get_results(self, path):
+        if self.refresh:
+            self._refresh()
         return self._get_results_from_parts(self._strip_empty_prefix(self._split_path(path)))
 
     def _get_results_from_parts(self, parts):
         logging.debug("get_results_from_parts: %s" % parts)
         if not parts: # root dir
-            return [result for entry in self.entries for result in entry.results] + [_AND_RESULT, _CUR_RESULT, _PARENT_RESULT]
+            return [result for configuration in self.mount_configurations.values() for entry in configuration["entries"] for result in entry.results] + [_AND_RESULT, _CUR_RESULT, _PARENT_RESULT]
 
         # fake enum
         class Parsed:
             KEY, VAL, AND, OR, NONE, DIR = range(1,7)
 
-        found = self.entries
+        found = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
         current_valid_keys = set([key for entry in found for key in entry.metadata.keys()])
         current_valid_values = set()
         current_key = None
@@ -539,28 +572,30 @@ class Entry(object):
     `path` is the actual path of the file/directory
     `metadata_paths` are the paths from which `metadata` is derived
     `metadata` is the metadata associated with the entry
-    `formatted_names` are the names by which the entry will be displayed
+    `name_tuples` is a list of tuples of (name, disambiguation_number); the names by which the entry will be displayed
     """
     __metaclass__ = _immutable
-    def __init__(self, path, metadata_paths, metadata, formatted_names):
+    def __init__(self, path, metadata_paths, metadata, name_tuples):
         assert type(path) == str
         self.path = path
         assert type(metadata_paths) == set
         self.metadata_paths = metadata_paths
         assert type(metadata) == dict
         self.metadata = metadata
-        assert type(formatted_names) == set
-        self.formatted_names = formatted_names
-        self.results = [Result(name, self.path) for name in self.formatted_names]
+        assert type(name_tuples) == list
+        if name_tuples:
+            assert type(name_tuples[0]) == tuple
+        self.name_tuples = name_tuples
+        self.results = [Result("%s (%s)" % (name, idx) if idx != 0 else name, self.path) for name,idx in self.name_tuples]
     # TODO evaluate if we should make an inverted hash
     #def __hash__(self):
     #    # TODO should this take into account the metadata values?
     #    return hash((self.path,)
     #           + tuple(self.metadata_paths)
-    #           + tuple(self.formatted_names)
+    #           + tuple(self.name_tuples)
     #           + tuple(self.metadata.keys()))
     def __repr__(self):
-        return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(self.formatted_names))
+        return "<Entry %s -> %s>" % (self.path, "[%s]" % ",".join(["%s (%s)" % (name, idx) if idx != 0 else name for name,idx in self.name_tuples]))
 
 class Result(object):
     """representation of a directory/symlink"""
