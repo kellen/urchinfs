@@ -317,7 +317,7 @@ class UrchinFS(TemplateFS):
             refresh = 0
             if "refresh" in option_set:
                 refresh = option_set["refresh"]
-            if refresh != 0:
+            if refresh > 0:
                 self.refresh = True # set if any mount config will refresh
             self.mount_configurations[option_set["source"]] = {
                     "config": option_set,
