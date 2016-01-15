@@ -188,7 +188,6 @@ class UrchinFS(TemplateFS):
 
     def _disambiguate_formatted_names(self, formatted_names):
         """return a tuple and a disambiguation number for each name in formatted_names"""
-        logging.debug("current disambig set: %s" % self._disambiguation)
         names = set(formatted_names)
         out = []
         for name in formatted_names:
@@ -197,7 +196,6 @@ class UrchinFS(TemplateFS):
                 idx = self._disambiguation[name] + 1
             self._disambiguation[name] = idx
             out.append((name, idx))
-        logging.debug("updated disambig set: %s" % self._disambiguation)
         return out
 
     def _make_entry(self, item_path, components, old_entry=None):
@@ -219,7 +217,6 @@ class UrchinFS(TemplateFS):
             cleaned_formatted_names = [name for name in cleaned_formatted_names if name not in remove]
 
         disambiguated_cleaned_formatted_names.extend(self._disambiguate_formatted_names(cleaned_formatted_names))
-        logging.debug("cleaned and disambiguated and formatted: %s..." % pprint.pformat(disambiguated_cleaned_formatted_names))
         return Entry(item_path, sources, metadata, disambiguated_cleaned_formatted_names)
 
     def _make_entries(self, components, path, old_entries=None):
@@ -380,7 +377,6 @@ class UrchinFS(TemplateFS):
         return self._get_results_from_parts(self._strip_empty_prefix(self._split_path(path)))
 
     def _get_results_from_parts(self, parts):
-        logging.debug("get_results_from_parts: %s" % parts)
         if not parts: # root dir
             return [result for configuration in self.mount_configurations.values() for entry in configuration["entries"] for result in entry.results] + [_AND_RESULT, _CUR_RESULT, _PARENT_RESULT]
 
