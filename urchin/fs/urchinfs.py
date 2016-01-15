@@ -325,12 +325,13 @@ class UrchinFS(TemplateFS):
                     }
 
     def _refresh(self):
+        refresh_time = time.time()
         for source,config in self.mount_configurations.items():
             if config["refresh"] > 0:
-                if time.time() - config["last_update"] > config["refresh"]:
+                if refresh_time - config["last_update"] > config["refresh"]:
                     logging.debug("refreshing %s" % source)
+                    config["last_update"] = refresh_time
                     config["entries"] = self._make_entries(config["components"], source, config["entries"])
-                    config["last_update"] = time.clock()
 
     def configure(self):
         self._configure_logging()
