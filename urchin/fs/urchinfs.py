@@ -14,6 +14,7 @@ import pprint
 import fuse
 import imp
 import time
+import functools
 
 from urchin import __version__
 import urchin.fs.plugin as plugin
@@ -28,6 +29,33 @@ from urchin.fs.core import Stat, TemplateFS
 logging.basicConfig()
 fuse.fuse_python_api = (0, 2)
 
+def cache(obj):
+    """modified https://wiki.python.org/moin/PythonDecoratorLibrary#Alternate_memoize_as_nested_functions"""
+    @functools.wraps(obj)
+    def cacher(self, *args, **kwargs):
+        self.cache_init()
+
+        now = time.time()
+        before = len(self.cache.keys())
+        self.cache = {key: val for key,val in self.cache.items() if now - val[1] < self.cache_expire}
+        num_expired = before - len(self.cache.keys())
+        if num_expired > 0:
+            logging.debug("\texpired %d cache keys" % num_expired)
+
+        key = str(self) + str(obj) + str(args) + str(kwargs)
+        if key not in self.cache:
+            self.cachemisses = self.cachemisses + 1
+            logging.debug("\tcache miss. hits: %d misses: %d" % (self.cachehits, self.cachemisses))
+            self.cache[key] = (obj(self, *args, **kwargs), time.time())
+        else:
+            val,_ = self.cache[key]
+            self.cache[key] = (val, time.time())
+            self.cachehits = self.cachehits + 1
+            logging.debug("\tcache hit. hits: %d misses: %d" % (self.cachehits, self.cachemisses))
+        val,_ = self.cache[key]
+        return val
+    return cacher
+
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
         self.plugin_search_paths = ["~/.urchin/plugins/"]
@@ -41,6 +69,9 @@ class UrchinFS(TemplateFS):
         self._disambiguation = dict()
         self.refresh = False
 
+        # FIXME make configurable
+        self.cache_expire = 10 # in seconds
+
         super(UrchinFS, self).__init__(*args, **kwargs)
         self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
         self.parser.add_option(mountopt="source", help="source directory")
@@ -50,6 +81,23 @@ class UrchinFS(TemplateFS):
         self.parser.add_option(mountopt="loglevel", help="the log level", choices=['debug', 'info', 'warning', 'error', 'critical'])
         for k in self.component_keys:
             self.parser.add_option(mountopt=k, help="%s name" % k)
+
+    #
+    # cache
+    #
+    def cache_init(self):
+        if not getattr(self, "cache", None):
+            self.cache = {}
+        if not getattr(self, "cachehits", None):
+            self.cachehits = 0
+        if not getattr(self, "cachemisses", None):
+            self.cachemisses = 0
+
+    def cache_reset(self):
+        self.cache_init()
+        self.cache = {}
+        self.cachehits = 0
+        self.cachemisses = 0
 
     #
     # Plugin/component handling
@@ -332,6 +380,7 @@ class UrchinFS(TemplateFS):
                     logging.debug("refreshing %s" % source)
                     config["last_update"] = refresh_time
                     config["entries"] = self._make_entries(config["components"], source, config["entries"])
+                    self.cache_reset()
 
     def configure(self):
         self._configure_logging()
@@ -377,6 +426,7 @@ class UrchinFS(TemplateFS):
             self._refresh()
         return self._get_results_from_parts(self._strip_empty_prefix(self._split_path(path)))
 
+    @cache
     def _get_results_from_parts(self, parts):
         if not parts: # root dir
             return [result for configuration in self.mount_configurations.values() for entry in configuration["entries"] for result in entry.results] + [_AND_RESULT, _CUR_RESULT, _PARENT_RESULT]
