@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
+import pdb
 import sys
 import os
 import stat
@@ -46,7 +47,8 @@ def cache(obj):
         if key not in self.cache:
             self.cachemisses = self.cachemisses + 1
             logging.debug("\tcache miss. hits: %d misses: %d" % (self.cachehits, self.cachemisses))
-            self.cache[key] = (obj(self, *args, **kwargs), time.time())
+            ret = obj(self, *args, **kwargs)
+            self.cache[key] = (ret , time.time())
         else:
             val,_ = self.cache[key]
             self.cache[key] = (val, time.time())
@@ -214,8 +216,16 @@ class UrchinFS(TemplateFS):
     # Indexing
     #
 
-    _name_regex = re.compile(u"^\s+|\s+$|^-+|^~+|[/\u0000-\u001F\u007f\u0085\u2028\u2029]", re.U)
     def _clean_formatted_names(self, formatted_names):
+        names = []
+        for name in formatted_names:
+            name = self._clean_display_value(name)
+            if name:
+                names.append(name)
+        return set(names)
+
+    _display_value_regex = re.compile(u"^\s+|\s+$|^-+|^~+|[/\u0000-\u001F\u007f\u0085\u2028\u2029]", re.U)
+    def _clean_display_value(self, value):
         """
         repeatedly removes disallowed characters:
         - leading whitespace
@@ -226,18 +236,17 @@ class UrchinFS(TemplateFS):
         - control characters (NUL, BEL, TAB(!), etc)
         - line breaks (\n, \r, \v, \f, file separator, group separator, record separator, NEL, line separator, paragraph separator)
         """
-        names = []
-        for idx, name in enumerate(formatted_names):
-            while True:
-                new = self._name_regex.sub("", name)
-                if new == name:
-                    break
-                name = new
-            if name:
-                names.append(name)
-            else:
-                logging.debug("ignoring name [%s]; after replacing disallowed characters, name is empty." % formatted_names[idx])
-        return set(names)
+        orig = value
+        while True:
+            new = self._display_value_regex.sub("", value)
+            if new == value:
+                break
+            value = new
+        if value == "." or value == "..":
+            value = None
+        if not value:
+            logging.debug("ignoring value [%s]; after replacing disallowed characters, value is empty." % orig)
+        return value
 
     def _disambiguate_formatted_names(self, formatted_names):
         """return a tuple and a disambiguation number for each name in formatted_names"""
@@ -256,6 +265,7 @@ class UrchinFS(TemplateFS):
         raw_metadata = {source: components["extractor"].extract(source) for source in sources}
         combined_metadata = components["merger"].merge(raw_metadata)
         metadata = components["munger"].mung(combined_metadata)
+        metadata = self._clean_metadata(metadata)
         formatted_names = components["formatter"].format(item_path, metadata)
         cleaned_formatted_names = self._clean_formatted_names(formatted_names)
         disambiguated_cleaned_formatted_names = []
@@ -271,6 +281,25 @@ class UrchinFS(TemplateFS):
 
         disambiguated_cleaned_formatted_names.extend(self._disambiguate_formatted_names(cleaned_formatted_names))
         return Entry(item_path, sources, metadata, disambiguated_cleaned_formatted_names)
+
+    def _clean_metadata(self, metadata):
+        """
+        cleans up the metadata dict for an entry
+        - removes invalid characters
+        - removes empty keys and values
+        - removes keys with no values
+        """
+        md = {}
+        for k,vals in metadata.items():
+            newvals = [self._clean_display_value(v) for v in vals]
+            newvals = [v for v in newvals if v]
+            if not newvals:
+                continue
+            newkey = self._clean_display_value(k)
+            if not newkey:
+                continue
+            md[newkey] = newvals
+        return md
 
     def _make_entries(self, components, path, old_entries=None):
         """
@@ -314,10 +343,13 @@ class UrchinFS(TemplateFS):
 
     def _normalize_config_paths(self, config):
         """expand and normalize paths defined in configuration"""
-        config["log"] = self._normalize_path(config["log"])
-        for mount in config["mounts"]:
-            mount["source"] = self._normalize_path(mount["source"])
-        config["plugindir"] = [self._normalize_path(dir) for dir in self.config["plugindir"]]
+        if "log" in config:
+            config["log"] = self._normalize_path(config["log"])
+        if "mounts" in config:
+            for mount in config["mounts"]:
+                mount["source"] = self._normalize_path(mount["source"])
+        if "plugindir" in config:
+            config["plugindir"] = [self._normalize_path(dir) for dir in self.config["plugindir"]]
         return config
 
     _logging_map = {
@@ -674,7 +706,7 @@ class Result(object):
         # pathname it contains, without a terminating null byte."
         self.size = len(name) if self.destination else Stat.DIRSIZE
     def __repr__(self):
-        return "<Result %s>" % (self.name if self.destination is None else "%s -> %s" % (self.name, self.destination))
+        return "<Result %s>" % (self.name.encode("utf-8") if self.destination is None else "%s -> %s" % (self.name.encode("utf-8"), self.destination))
 
 _AND = u"^"
 _OR = u"+"

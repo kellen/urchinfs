@@ -17,6 +17,7 @@ class Plugin(urchin.fs.plugin.Plugin):
                 )
 
 class TMDBMetadataMunger(urchin.fs.plugin.MetadataMunger):
+    """extracts a subset of tmdb metadata and flattens the tmdb json structure"""
     name = "tmdb"
     def __init__(self, config):
         pass

@@ -62,8 +62,12 @@ class MetadataMerger(object):
         pass
     def merge(self, metadata):
         """
-        Merges `metadata`, a list of dicts with string keys and sets of strings as values
-        into a single dict with string keys and sets of strings as values.
+        Merges `metadata`
+
+        `metadata` is a dict of: source -> dict of metadata
+        each dict of metadata has string keys and sets of strings of values.
+
+        return a single single dict with string keys and sets of strings as values.
         """
         raise NotImplementedError()
 
