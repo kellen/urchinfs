@@ -37,7 +37,7 @@ def cache(obj):
 
         now = time.time()
         before = len(self.cache.keys())
-        self.cache = {key: val for key,val in self.cache.items() if now - val[1] < self.cache_expire}
+        self.cache = {key: val for key,val in self.cache.items() if now - val[1] < self.config["expire"]}
         num_expired = before - len(self.cache.keys())
         if num_expired > 0:
             logging.debug("\texpired %d cache keys" % num_expired)
@@ -58,27 +58,30 @@ def cache(obj):
 
 class UrchinFS(TemplateFS):
     def __init__(self, *args, **kwargs):
-        self.plugin_search_paths = ["~/.urchin/plugins/"]
         self.component_types = self._find_component_types()
         self.component_keys = self.component_types.keys()
         self.original_working_directory = os.getcwd()
 
+        self.config = {
+                "loglevel": "warning",
+                "expire": 3600,
+                "plugindir": ["~/.urchin/plugins/"]
+                }
         self.mount_configurations = {}
         self.plugins = {}
         self.plugin_components = {}
         self._disambiguation = dict()
         self.refresh = False
 
-        # FIXME make configurable
-        self.cache_expire = 10 # in seconds
-
         super(UrchinFS, self).__init__(*args, **kwargs)
         self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
         self.parser.add_option(mountopt="source", help="source directory")
         self.parser.add_option(mountopt="plugin", help="plugin name. if set, component options ignored")
-        self.parser.add_option(mountopt="refresh", type="int", default=0, help="time before doing a full refresh, in seconds. 0 (default) will not refresh.")
+        self.parser.add_option(mountopt="plugindir", help="directory in which to find plugins")
+        self.parser.add_option(mountopt="refresh", type="int", default=0, help="time before doing a full refresh, in seconds. 0 (default) will not refresh")
         self.parser.add_option(mountopt="log", help="the file to which to log")
         self.parser.add_option(mountopt="loglevel", help="the log level", choices=['debug', 'info', 'warning', 'error', 'critical'])
+        self.parser.add_option(mountopt="expire", type="int", default=3600, help="cache expire time in seconds; 0 will never expire")
         for k in self.component_keys:
             self.parser.add_option(mountopt=k, help="%s name" % k)
 
@@ -93,6 +96,8 @@ class UrchinFS(TemplateFS):
         if not getattr(self, "cachemisses", None):
             self.cachemisses = 0
 
+
+    # FIXME ugly
     def cache_reset(self):
         self.cache_init()
         self.cache = {}
@@ -114,30 +119,30 @@ class UrchinFS(TemplateFS):
 
     _plugin_main_module = "__init__"
     def _load_plugins(self):
-        """Load default plugins and plugins found in `plugin_search_paths`"""
+        """Load default plugins and plugins found in `plugindir`"""
         logging.debug("loading plugins...")
         # roughly like https://lkubuntu.wordpress.com/2012/10/02/writing-a-python-plugin-api/
         plugins = {"mp3": mp3, "default": default, "json": json, "tmdb": tmdb }
         logging.debug("loaded default plugins")
-        for plugin_path in self.plugin_search_paths:
-            plugin_path = os.path.abspath(os.path.expanduser(plugin_path))
-            logging.debug("searching for plugins in %s" % plugin_path)
-            if not os.path.exists(plugin_path):
-                logging.debug("plugin search path does not exist: %s" % plugin_path)
-            else:
-                if not os.path.isdir(plugin_path):
-                    logging.debug("plugin search path is not a directory: %s" % plugin_path)
+        if "plugindir" in self.config and self.config["plugindir"]:
+            for plugin_path in self.config["plugindir"]:
+                logging.debug("searching for plugins in %s" % plugin_path)
+                if not os.path.exists(plugin_path):
+                    logging.debug("plugin search path does not exist: %s" % plugin_path)
                 else:
-                    for name in os.listdir(plugin_path):
-                        path = os.path.join(plugin_path, name)
-                        if os.path.isdir(path) and "%s.py" % self._plugin_main_module in os.listdir(path):
-                            try:
-                                info = imp.find_module("__init__", [path])
-                                plugins[name] = imp.load_module(self._plugin_main_module, info[0], info[1], info[2])
-                                logging.debug("found plugin module '%s'" % name)
-                                info[0].close()
-                            except ImportError:
-                                logging.warning("plugin module '%s' has no '%s'" % (name, _plugin_main_module))
+                    if not os.path.isdir(plugin_path):
+                        logging.debug("plugin search path is not a directory: %s" % plugin_path)
+                    else:
+                        for name in os.listdir(plugin_path):
+                            path = os.path.join(plugin_path, name)
+                            if os.path.isdir(path) and "%s.py" % self._plugin_main_module in os.listdir(path):
+                                try:
+                                    info = imp.find_module("__init__", [path])
+                                    plugins[name] = imp.load_module(self._plugin_main_module, info[0], info[1], info[2])
+                                    logging.debug("found plugin module '%s'" % name)
+                                    info[0].close()
+                                except ImportError:
+                                    logging.warning("plugin module '%s' has no '%s'" % (name, _plugin_main_module))
         logging.debug("loaded plugins:\n%s" % pprint.pformat(plugins))
         return plugins
 
@@ -176,15 +181,15 @@ class UrchinFS(TemplateFS):
         plugin = plugin_class()
         return {k: getattr(plugin, k) for k in self.component_keys}
 
-    def _configure_components_from_options(self, option_set):
+    def _configure_components_from_options(self, mount_options):
         """load a set of components by name, using defaults if not specified"""
         # load the classes defined in default
         component_config = {k: None for k in self.component_keys}
         component_config.update({key: v for key,value in self._components_from_modules([default]).items() for k,v in value.items()})
         # override with the classes specified on the command line
         for component_key in self.component_keys:
-            if component_key in option_set:
-                component_name = option_set[component_key]
+            if component_key in mount_options:
+                component_name = mount_options[component_key]
                 if component_name in self.plugin_components[component_key]:
                     component_config[component_key] = self.plugin_components[component_key][component_name]
                 else:
@@ -193,17 +198,17 @@ class UrchinFS(TemplateFS):
         logging.debug("component configuration from options:\n%s" % pprint.pformat(component_config))
         return component_config
 
-    def _configure_components(self, option_set):
-        logging.debug("configuring components for option_set %s..." % option_set)
-        if "plugin" in option_set:
-            config = self._configure_components_from_plugin(option_set["plugin"])
+    def _configure_components(self, mount_options):
+        logging.debug("configuring components for mount_options %s..." % mount_options)
+        if "plugin" in mount_options:
+            config = self._configure_components_from_plugin(mount_options["plugin"])
         else:
-            config = self._configure_components_from_options(option_set)
+            config = self._configure_components_from_options(mount_options)
         for k in self.component_keys:
             if k not in config or not config[k]:
                 raise ConfigurationError("No component specified for '%s'" % k)
         logging.debug("using component config:\n%s" % pprint.pformat(config))
-        return {k: cls(option_set) for k,cls in config.iteritems()}
+        return {k: cls(mount_options) for k,cls in config.iteritems()}
 
     #
     # Indexing
@@ -272,7 +277,6 @@ class UrchinFS(TemplateFS):
         make the entries for `path` given the defined `components`
         if `old_entries` is set, if a matching entry is found, its matching formatted paths are retained
         """
-        path = self._normalize_path(path)
         entries = []
         indexed = components["indexer"].index(path)
         logging.debug("indexed path %s gave item paths: %s" % (path, pprint.pformat(indexed)))
@@ -296,38 +300,25 @@ class UrchinFS(TemplateFS):
     def fsinit(self):
         logging.debug("initialized filesystem")
 
-    def _load_configurations_from_file(self, path):
-        """configuration must be a python file with a variable 'config' which is a list of dicts."""
-        path = self._normalize_path(path)
-        context = {}
-        try:
-            execfile(path, context)
-        except Exception:
-            raise ConfigurationError("Error while attempting to load configuration from %s" % path)
-        if "config" not in context:
-            raise ConfigurationError("No 'config' variable defined in %s" % path)
-        config = context["config"]
-        if isinstance(config, dict):
-            config = [config]
-        if not isinstance(config, list):
-            raise ConfigurationError("'config' must be a dict or a list of dicts")
-        for d in config:
-            if not isinstance(d, dict):
-                raise ConfigurationError("'config' must be a dict or a list of dicts")
-            if "source" in d:
-                if not os.path.isabs(d["source"]):
-                    raise ConfigurationError("'source' [%s] must be an absolute path when defined in a config file" % d["source"])
-        return config
+    def configure(self):
+        config = self._get_config_from_file() if self.cmdline[0].config else self._get_config_from_options()
+        self.config.update(config)
+        self.config = self._normalize_config_paths(self.config)
+        self._configure_logging()
 
-    def _get_option_sets(self):
-        options = self.cmdline[0] # ugh
-        if options.config:
-            logging.debug("loading configuration from [%s], other options ignored" % options.config)
-            return self._load_configurations_from_file(options.config)
-        else:
-            logging.debug("loading configuration from command line options")
-            # extract dict from optparse.Values instance
-            return [{k:v for k,v in vars(options).items() if v}]
+        logging.debug("configuring filesystem...")
+        self.plugins = self._load_plugins()
+        self.plugin_components = self._find_plugin_components()
+        self._create_mount_configurations()
+        logging.debug("configured filesystem")
+
+    def _normalize_config_paths(self, config):
+        """expand and normalize paths defined in configuration"""
+        config["log"] = self._normalize_path(config["log"])
+        for mount in config["mounts"]:
+            mount["source"] = self._normalize_path(mount["source"])
+        config["plugindir"] = [self._normalize_path(dir) for dir in self.config["plugindir"]]
+        return config
 
     _logging_map = {
             "debug": logging.DEBUG,
@@ -337,35 +328,68 @@ class UrchinFS(TemplateFS):
             "critical": logging.CRITICAL
             }
     def _configure_logging(self):
-        options = self.cmdline[0]
         log = logging.getLogger()
         formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
-        if options.log:
-            if not os.path.isabs(options.log):
-                raise ConfigurationError("log path must be absolute")
-            fileh = logging.FileHandler(options.log, 'a')
+        if "log" in self.config and self.config["log"]:
+            logfile = self.config["log"]
+            fileh = logging.FileHandler(logfile, 'a')
             fileh.setFormatter(formatter)
             # remove all old handlers and set the new one
             for hdlr in log.handlers:
                 log.removeHandler(hdlr)
             log.addHandler(fileh)
-        if options.loglevel:
-            if options.loglevel not in self._logging_map:
+        if "loglevel" in self.config and self.config["loglevel"]:
+            loglevel = self.config["loglevel"]
+            if loglevel not in self._logging_map:
                 raise ConfigurationError("loglevel must be one of: %s" % ",".join(self._logging_map.keys()))
-            log.setLevel(self._logging_map[options.loglevel])
+            log.setLevel(self._logging_map[loglevel])
+
+    def _get_config_from_options(self):
+        logging.debug("loading configuration from command line options")
+        options = self.cmdline[0]
+        config = {}
+        d = {k:v for k,v in vars(options).items() if v}
+        # all options except these are part of the single mount configuration
+        # which can be specified on the command line/in the fstab
+        nonmount = ["loglevel", "log", "expire", "plugindir"]
+        for opt in nonmount:
+            if opt in d:
+                config[opt] = d[opt]
+                del d[opt]
+        config["mounts"] = [d]
+        if "plugindir" in config:
+            config["plugindir"] = [config["plugindir"]]
+        config["from_file"] = False
+        return config
+
+    def _get_config_from_file(self):
+        """configuration must be a python file with a variable 'config' which is a dict or dict-like."""
+        path = self.cmdline[0].config
+        logging.debug("loading configuration from [%s], other options ignored" % path)
+        path = self._normalize_path(path)
+        context = {}
+        try:
+            execfile(path, context)
+        except Exception:
+            raise ConfigurationError("Error while attempting to load configuration from %s" % path)
+        if "config" not in context:
+            raise ConfigurationError("No 'config' variable defined in %s" % path)
+        config = context["config"]
+        config["from_file"] = True
+        return config
 
     def _create_mount_configurations(self):
-        for option_set in self._get_option_sets():
-            components = self._configure_components(option_set)
+        for mount_options in self.config["mounts"]:
+            components = self._configure_components(mount_options)
             logging.debug("components: %s" % pprint.pformat(components))
-            entries = self._make_entries(components, option_set["source"])
+            entries = self._make_entries(components, mount_options["source"])
             refresh = 0
-            if "refresh" in option_set:
-                refresh = option_set["refresh"]
+            if "refresh" in mount_options:
+                refresh = mount_options["refresh"]
             if refresh > 0:
                 self.refresh = True # set if any mount config will refresh
-            self.mount_configurations[option_set["source"]] = {
-                    "config": option_set,
+            self.mount_configurations[mount_options["source"]] = {
+                    "config": mount_options,
                     "components": components,
                     "entries": entries,
                     "refresh": refresh,
@@ -382,19 +406,12 @@ class UrchinFS(TemplateFS):
                     config["entries"] = self._make_entries(config["components"], source, config["entries"])
                     self.cache_reset()
 
-    def configure(self):
-        self._configure_logging()
-        logging.debug("configuring filesystem...")
-        self.plugins = self._load_plugins()
-        self.plugin_components = self._find_plugin_components()
-        self._create_mount_configurations()
-        logging.debug("configured filesystem")
-
     #
     # util
     #
 
     def _normalize_path(self, path):
+        path = os.path.expanduser(path)
         if not os.path.isabs(path):
             path = os.path.join(self.original_working_directory, path)
         return os.path.normpath(path)
@@ -424,7 +441,8 @@ class UrchinFS(TemplateFS):
     def _get_results(self, path):
         if self.refresh:
             self._refresh()
-        return self._get_results_from_parts(self._strip_empty_prefix(self._split_path(path)))
+        parts = self._strip_empty_prefix(self._split_path(path))
+        return self._get_results_from_parts(parts)
 
     @cache
     def _get_results_from_parts(self, parts):
@@ -675,12 +693,17 @@ def main():
     try:
         server.configure()
     except ConfigurationError, e:
-        logging.error("Failed to configure filesystem, exiting. Cause:\n\t%s" % e.message)
+        msg = "Failed to configure filesystem, exiting. Cause:\n\t%s" % e.message
+        logging.error(msg)
+        sys.stderr.write(msg)
         sys.exit(1)
     try:
         server.main()
     except fuse.FuseError, e:
-        logging.error("Error during filesystem operation. Cause:\n\t%s" % e.message)
+        msg = "Error during filesystem operation. Cause:\n\t%s" % e.message
+        logging.error(msg)
+        sys.stderr.write(msg)
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
