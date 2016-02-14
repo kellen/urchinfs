@@ -4,7 +4,6 @@
 from __future__ import absolute_import
 import os
 import logging
-import pdb
 from fnmatch import fnmatch
 
 import mutagen
@@ -77,12 +76,11 @@ class Mp3AlbumMetadataMerger(urchin.fs.plugin.MetadataMerger):
                     merged[k] = v
                 else:
                     merged[k].update(v)
-        merged["split"] = "yes" if len(merged["artist"]) == 2 else "no"
-        merged["compilation"] = "yes" if len(merged["artist"]) > 2 else "no"
-
+        merged["split"] = set([u"yes"]) if len(merged["artist"]) == 2 else set([u"no"])
+        merged["compilation"] = set([u"yes"]) if len(merged["artist"]) > 2 else set([u"no"])
         for e in ensure:
             if not e in merged:
-                merged[e] = set(["????"])
+                merged[e] = set([u"????"])
         return merged
 
 class Mp3DirectoryFormatter(urchin.fs.plugin.Formatter):
@@ -90,24 +88,19 @@ class Mp3DirectoryFormatter(urchin.fs.plugin.Formatter):
     def __init__(self, config):
         pass
     def format(self, original_name, metadata):
-        d = metadata.copy()
-        #for k in d:
-        #    if type(d[k]) == list and len(d[k]) == 1:
-        #        d[k] = d[k][0]
-        d = {k: v[0] if type(v) == list and len(v) == 1 else v for k,v in d.items()}
-        if metadata["compilation"] == "yes":
+        # reduce single values from sets
+        d = {k: list(v)[0] if type(v) == set and len(v) == 1 else v for k,v in metadata.items()}
+        if d["compilation"] == "yes":
             return set(["Compilation - %(date)s - %(album)s" % d])
-        else:
-            if metadata["split"] == "yes":
-                d["first"] = metadata["artist"][0]
-                d["second"] = metadata["artist"][1]
+        elif d["split"] == "yes":
+                l = list(d["artist"])
+                d["first"] = l[0]
+                d["second"] = l[1]
                 return set([
-                    "%(first)s - %(date)s - split with %(second) - %(album)s" % d,
-                    "%(second)s - %(date)s - split with %(first) - %(album)s" % d,
+                    "%(first)s - %(date)s - with %(second)s - %(album)s" % d,
+                    "%(second)s - %(date)s - with %(first)s - %(album)s" % d,
                     ])
-            else:
-                return set(["%(artist)s - %(date)s - %(album)s" % d])
-        return original_name
+        return set(["%(artist)s - %(date)s - %(album)s" % d])
 
 # TODO
 class Mp3FileFormatter(urchin.fs.plugin.Formatter):

@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-import pdb
 import sys
 import os
 import stat
@@ -266,6 +265,7 @@ class UrchinFS(TemplateFS):
         combined_metadata = components["merger"].merge(raw_metadata)
         metadata = components["munger"].mung(combined_metadata)
         metadata = self._clean_metadata(metadata)
+
         formatted_names = components["formatter"].format(item_path, metadata)
         cleaned_formatted_names = self._clean_formatted_names(formatted_names)
         disambiguated_cleaned_formatted_names = []
@@ -298,7 +298,7 @@ class UrchinFS(TemplateFS):
             newkey = self._clean_display_value(k)
             if not newkey:
                 continue
-            md[newkey] = newvals
+            md[newkey] = set(newvals)
         return md
 
     def _make_entries(self, components, path, old_entries=None):
