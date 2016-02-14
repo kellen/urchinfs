@@ -98,11 +98,17 @@ COMPONENTS
     INDEXER
         json
             Indexes directories which contain json files
+        mp3
+            Indexes directories which contain mp3 files
+        mp3-file
+            Indexes mp3 files
     MATCHER
         default
             Matches the item path
         json
             Matches json files contained in the item directory 
+        mp3
+            Matches mp3 files contained in the item directory
     EXTRACTOR
         json-basic
             Parses a json file and returns the untouched json object
@@ -110,11 +116,18 @@ COMPONENTS
             Parses a json file and converts non-string keys and values to strings if 
             the conversion is straightforward. Values in the source must be are single 
             values or lists of single values, otherwise they are ignored. 
+        mp3
+            Extracts the metadata contained in the id3 tag
     MERGER
         default
             Merges metadata maps while attempting to do as little as possible.
             Values for duplicate keys are merged into lists, unless the values
             are themselves tuples, sets, or lists, in which case the values are combined.
+        mp3
+            Merges metadata for an entire directory, assumed to be an album.
+            Drops some metadata irrelevant to an album, e.g. track number
+            Sets a fallback "????" for unknown values required by the `mp3` formatter.
+            Sets "compilation" and "split" metadata.
     MUNGER
         default
             Does nothing
@@ -123,6 +136,11 @@ COMPONENTS
     FORMATTER
         default
             Returns the basename for the item path
+        mp3
+            Formats as: "artist - date - album" for typical albums.
+            Uses "Compilation" instead of artist when the "compilation" metadata is set.
+            For splits, defined as albums with exactly two artists, produces two entries:
+            "artist1 - date - with artist2 - album" and "artist2 - date - with artist1 - album"
         tmdb
             Formats as: "title (alternative-title) (director, year)", falls back on
             the item path if no title exists.
@@ -130,6 +148,9 @@ PLUGINS
     tmdb
         Same as: indexer: json, matcher: json, extractor: json-basic,
         merger: default, munger: tmdb, formatter: tmdb
+    mp3
+        Same as: indexer: mp3, matcher: mp3, extractor: mp3,
+        merger: mp3, munger: default, formatter: mp3
 
 COMPONENTS
 ==========

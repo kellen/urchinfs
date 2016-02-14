@@ -102,7 +102,7 @@ class Mp3DirectoryFormatter(urchin.fs.plugin.Formatter):
                     ])
         return set(["%(artist)s - %(date)s - %(album)s" % d])
 
-# TODO
+# TODO write the mp3 filename formatter
 class Mp3FileFormatter(urchin.fs.plugin.Formatter):
     name = "mp3-file"
     def __init__(self, config):
