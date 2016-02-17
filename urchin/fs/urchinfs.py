@@ -20,6 +20,7 @@ from urchin import __version__
 import urchin.fs.plugin as plugin
 import urchin.fs.default as default
 import urchin.fs.mp3 as mp3
+import urchin.fs.mp3file as mp3file
 import urchin.fs.json as json
 import urchin.fs.tmdb as tmdb
 from urchin.fs.core import Stat, TemplateFS
@@ -123,7 +124,7 @@ class UrchinFS(TemplateFS):
         """Load default plugins and plugins found in `plugindir`"""
         logging.debug("loading plugins...")
         # roughly like https://lkubuntu.wordpress.com/2012/10/02/writing-a-python-plugin-api/
-        plugins = {"mp3": mp3, "default": default, "json": json, "tmdb": tmdb }
+        plugins = {"mp3": mp3, "mp3file": mp3file, "default": default, "json": json, "tmdb": tmdb }
         logging.debug("loaded default plugins")
         if "plugindir" in self.config and self.config["plugindir"]:
             for plugin_path in self.config["plugindir"]:

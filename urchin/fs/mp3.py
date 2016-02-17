@@ -32,11 +32,6 @@ class Mp3DirectoryIndexer(urchin.fs.abstract.AbstractDirectoryIndexer):
     def __init__(self, config):
         super(Mp3DirectoryIndexer, self).__init__(config, MP3_GLOB)
 
-class Mp3FileIndexer(urchin.fs.abstract.AbstractFileIndexer):
-    name = "mp3-file"
-    def __init__(self, config):
-        super(Mp3FileIndexer, self).__init__(config, MP3_GLOB)
-
 class Mp3FileMetadataMatcher(urchin.fs.abstract.AbstractFileMetadataMatcher):
     name = "mp3"
     def __init__(self, config):
@@ -101,27 +96,3 @@ class Mp3DirectoryFormatter(urchin.fs.plugin.Formatter):
                     "%(second)s - %(date)s - with %(first)s - %(album)s" % d,
                     ])
         return set(["%(artist)s - %(date)s - %(album)s" % d])
-
-# TODO write the mp3 filename formatter
-class Mp3FileFormatter(urchin.fs.plugin.Formatter):
-    name = "mp3-file"
-    def __init__(self, config):
-        pass
-    def format(self, original_name, metadata):
-        return original_name
-
-
-# TODO define multiple plugins here? or make new module?
-"""
-class Plugin(urchin.fs.plugin.Plugin):
-    name = "mp3-file"
-    def __init__(self):
-        super(Plugin, self).__init__(
-                indexer=Mp3FileIndexer,
-                matcher=urchin.fs.default.DefaultMetadataMatcher,
-                extractor=Mp3MetadataExtractor,
-                merger=urchin.fs.default.DefaultMerger,
-                munger=urchin.fs.default.DefaultMunger,
-                formatter=urchin.fs.default.DefaultFormatter
-                )
-"""

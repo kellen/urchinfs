@@ -100,7 +100,7 @@ COMPONENTS
             Indexes directories which contain json files
         mp3
             Indexes directories which contain mp3 files
-        mp3-file
+        mp3file
             Indexes mp3 files
     MATCHER
         default
@@ -141,6 +141,8 @@ COMPONENTS
             Uses "Compilation" instead of artist when the "compilation" metadata is set.
             For splits, defined as albums with exactly two artists, produces two entries:
             "artist1 - date - with artist2 - album" and "artist2 - date - with artist1 - album"
+        mp3file
+            Formats as: "tracknumber - artist - title"
         tmdb
             Formats as: "title (alternative-title) (director, year)", falls back on
             the item path if no title exists.
@@ -151,6 +153,9 @@ PLUGINS
     mp3
         Same as: indexer: mp3, matcher: mp3, extractor: mp3,
         merger: mp3, munger: default, formatter: mp3
+    mp3file
+        Same as: indexer: mp3file, matcher: default, extractor: mp3,
+        merger: default, munger: default, formatter: mp3file
 
 COMPONENTS
 ==========
