@@ -71,7 +71,7 @@ class UrchinFS(TemplateFS):
                 "expire": 3600,
                 "plugindir": ["~/.urchin/plugins/"]
                 }
-        self.mount_configurations = {}
+        self.mounts = {}
         self.plugins = {}
         self.plugin_components = {}
         self._disambiguation = dict()
@@ -349,7 +349,7 @@ class UrchinFS(TemplateFS):
         self.plugins = self._load_plugins()
         self.plugin_components = self._find_plugin_components()
         self._configure_db()
-        self._create_mount_configurations()
+        self._create_mounts()
         logging.debug("configured filesystem")
 
     def _configure_db(self):
@@ -448,7 +448,7 @@ class UrchinFS(TemplateFS):
         config["from_file"] = True
         return config
 
-    def _create_mount_configurations(self):
+    def _create_mounts(self):
         for mount_options in self.config["mounts"]:
             components = self._configure_components(mount_options)
             logging.debug("components: %s" % pprint.pformat(components))
@@ -458,7 +458,7 @@ class UrchinFS(TemplateFS):
                 refresh = mount_options["refresh"]
             if refresh > 0:
                 self.refresh = True # set if any mount config will refresh
-            self.mount_configurations[mount_options["source"]] = {
+            self.mounts[mount_options["source"]] = {
                     "config": mount_options,
                     "components": components,
                     "entries": entries,
@@ -468,7 +468,7 @@ class UrchinFS(TemplateFS):
 
     def _refresh(self):
         refresh_time = time.time()
-        for source,config in self.mount_configurations.items():
+        for source,config in self.mounts.items():
             if config["refresh"] > 0:
                 if refresh_time - config["last_update"] > config["refresh"]:
                     logging.debug("refreshing %s" % source)
@@ -517,13 +517,13 @@ class UrchinFS(TemplateFS):
     @cache
     def _get_results_from_parts(self, parts):
         if not parts: # root dir
-            return [result for configuration in self.mount_configurations.values() for entry in configuration["entries"] for result in entry.results] + [_AND_RESULT, _CUR_RESULT, _PARENT_RESULT]
+            return [result for configuration in self.mounts.values() for entry in configuration["entries"] for result in entry.results] + [_AND_RESULT, _CUR_RESULT, _PARENT_RESULT]
 
         # fake enum
         class Parsed:
             KEY, VAL, AND, OR, NONE, DIR = range(1,7)
 
-        found = [entry for configuration in self.mount_configurations.values() for entry in configuration["entries"]]
+        found = [entry for configuration in self.mounts.values() for entry in configuration["entries"]]
         current_valid_keys = set([key for entry in found for key in entry.metadata.keys()])
         current_valid_values = set()
         current_key = None
