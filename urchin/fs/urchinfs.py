@@ -15,6 +15,8 @@ import fuse
 import imp
 import time
 import functools
+import uuid
+import sqlite3
 
 from urchin import __version__
 import urchin.fs.plugin as plugin
@@ -330,6 +332,13 @@ class UrchinFS(TemplateFS):
     def fsinit(self):
         logging.debug("initialized filesystem")
 
+    def fsdestroy(self):
+        logging.debug("destroying filesystem")
+        self.db.close()
+        if "db.tmp" in self.config and self.config["db.tmp"]:
+            os.remove(self.config["db"])
+        logging.debug("destroyed filesystem")
+
     def configure(self):
         config = self._get_config_from_file() if self.cmdline[0].config else self._get_config_from_options()
         self.config.update(config)
@@ -339,8 +348,36 @@ class UrchinFS(TemplateFS):
         logging.debug("configuring filesystem...")
         self.plugins = self._load_plugins()
         self.plugin_components = self._find_plugin_components()
+        self._configure_db()
         self._create_mount_configurations()
         logging.debug("configured filesystem")
+
+    def _configure_db(self):
+        if "db" not in self.config or not self.config["db"]:
+            base = self._normalize_path("~/.urchin/")
+            tmppath = os.path.join(base, "tmp")
+            self.config["db"] = os.path.join(tmppath, "%s.db" % uuid.uuid4())
+            self.config["db.tmp"] = True
+            logging.debug("No database path configured, using %s" % self.config["db"])
+            if not os.path.exists(base):
+                raise ConfigurationError("No existing urchin directory: %s" % base)
+            if os.path.exists(tmppath) and os.path.isfile(tmppath):
+                raise ConfigurationError("Temporary urchin path is not a directory: %s" % tmppath)
+            if not os.path.exists(tmppath):
+                try:
+                    os.mkdir(tmppath)
+                except OSError:
+                    raise ConfigurationError("Could not make temporary directory: %s" % tmppath)
+        self.config["db"] = self._normalize_path(self.config["db"])
+        self.db = sqlite3.connect(self.config["db"])
+        c = self.db.cursor()
+        c.execute("create table if not exists mount (id integer primary key, name text not null)")
+        c.execute("create table if not exists item (id integer primary key, mount_id integer not null, path text not null)")
+        c.execute("create table if not exists source (id integer primary key, item_id integer not null, path text not null)")
+        c.execute("create table if not exists metadata (id integer primary key, source_id integer not null, key text not null, value text not null)")
+        c.execute("create table if not exists name (id integer primary key, item_id integer not null, name text not null)")
+        c.close()
+        self.db.commit()
 
     def _normalize_config_paths(self, config):
         """expand and normalize paths defined in configuration"""
