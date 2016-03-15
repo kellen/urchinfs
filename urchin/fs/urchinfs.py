@@ -79,6 +79,7 @@ class UrchinFS(TemplateFS):
 
         super(UrchinFS, self).__init__(*args, **kwargs)
         self.parser.add_option(mountopt="config", help="configuration file. if set, other options ignored")
+        self.parser.add_option(mountopt="db", help="database file. if unset, a temporary db will be created in ~/.urchin/tmp/ and deleted on exit.")
         self.parser.add_option(mountopt="source", help="source directory")
         self.parser.add_option(mountopt="plugin", help="plugin name. if set, component options ignored")
         self.parser.add_option(mountopt="plugindir", help="directory in which to find plugins")
@@ -304,6 +305,39 @@ class UrchinFS(TemplateFS):
             md[newkey] = set(newvals)
         return md
 
+    def _make_entries_new(self):
+        existing_mounts = set([row[0] for row in list(connection.execute("select name from mount"))])
+
+        for name,mount in self.mounts.items():
+            mount["last_update"] = time.time()
+
+            name in existing_mounts and mount["refresh"]
+            -> False
+
+
+
+
+            rescan = False
+            if name in existing_mounts:
+                if not mount["refresh"]:
+                    continue # assume DB is correct
+                else:
+                    rescan = True
+            else:
+
+            if rescan:
+                self._make_entries(mount["components"], mount["source"]) # FIXME FIXME FIXME WRONG
+
+
+            #
+            # FIXME UGH
+            #
+            self._make_entries(mount["components"], mount["source"])
+
+            components = mount["components"]
+            indexed = components["indexer"].index(mount["source"])
+
+
     def _make_entries(self, components, path, old_entries=None):
         """
         make the entries for `path` given the defined `components`
@@ -325,6 +359,9 @@ class UrchinFS(TemplateFS):
         logging.debug("entries: %s" % pprint.pformat(entries))
         return entries
 
+    def _purge_old_mounts(self): # FIXME write this
+        pass
+
     #
     # Initialization
     #
@@ -334,9 +371,13 @@ class UrchinFS(TemplateFS):
 
     def fsdestroy(self):
         logging.debug("destroying filesystem")
-        self.db.close()
-        if "db.tmp" in self.config and self.config["db.tmp"]:
-            os.remove(self.config["db"])
+        if self.db:
+            self.db.close()
+            if "db.tmp" in self.config and self.config["db.tmp"]:
+                try:
+                    os.remove(self.config["db"])
+                except OSError:
+                    logging.debug("Failed to remove temporary DB: %s" % self.config["db"])
         logging.debug("destroyed filesystem")
 
     def configure(self):
@@ -348,8 +389,11 @@ class UrchinFS(TemplateFS):
         logging.debug("configuring filesystem...")
         self.plugins = self._load_plugins()
         self.plugin_components = self._find_plugin_components()
-        self._configure_db()
-        self._create_mounts()
+        self.mounts = self._create_mounts()
+        self.db = self._configure_db()
+
+        self._purge_old_mounts() # FIXME write this
+        self._make_entries_new() # FIXME ensure this works
         logging.debug("configured filesystem")
 
     def _configure_db(self):
@@ -369,20 +413,29 @@ class UrchinFS(TemplateFS):
                 except OSError:
                     raise ConfigurationError("Could not make temporary directory: %s" % tmppath)
         self.config["db"] = self._normalize_path(self.config["db"])
-        self.db = sqlite3.connect(self.config["db"])
-        c = self.db.cursor()
-        c.execute("create table if not exists mount (id integer primary key, name text not null)")
-        c.execute("create table if not exists item (id integer primary key, mount_id integer not null, path text not null)")
-        c.execute("create table if not exists source (id integer primary key, item_id integer not null, path text not null)")
-        c.execute("create table if not exists metadata (id integer primary key, source_id integer not null, key text not null, value text not null)")
-        c.execute("create table if not exists name (id integer primary key, item_id integer not null, name text not null)")
+        db = sqlite3.connect(self.config["db"])
+        c = db.cursor()
+        c.execute("PRAGMA foreign_keys = ON") # ensure foreign keys enabled
+        # FIXME FIXME FIXME add cascade deletions so we can easily remove a mount
+        tables = [
+                "mount (id integer primary key, name text not null)",
+                "item (id integer primary key, foreign key(mount_id) references mount(id) not null, path text not null)",
+                "source (id integer primary key, foreign key(item_id) references item(id) not null, path text not null)",
+                "metadata (id integer primary key, foreign key(source_id) references source(id) not null, key text not null, value text not null)",
+                "name (id integer primary key, foreign key(item_id) references item(id) not null, name text not null, disambiguation integer)"
+                ]
+        for t in tables:
+            c.execute("create table if not exists %s" % t)
         c.close()
-        self.db.commit()
+        db.commit()
+        return db
 
     def _normalize_config_paths(self, config):
         """expand and normalize paths defined in configuration"""
-        if "log" in config:
-            config["log"] = self._normalize_path(config["log"])
+        pathkeys = ["log", "db"]
+        for key in pathkeys:
+            if key in config:
+                config[key] = self._normalize_path(config[key])
         if "mounts" in config:
             for mount in config["mounts"]:
                 mount["source"] = self._normalize_path(mount["source"])
@@ -421,7 +474,7 @@ class UrchinFS(TemplateFS):
         d = {k:v for k,v in vars(options).items() if v}
         # all options except these are part of the single mount configuration
         # which can be specified on the command line/in the fstab
-        nonmount = ["loglevel", "log", "expire", "plugindir"]
+        nonmount = ["db", "loglevel", "log", "expire", "plugindir"]
         for opt in nonmount:
             if opt in d:
                 config[opt] = d[opt]
@@ -449,30 +502,27 @@ class UrchinFS(TemplateFS):
         return config
 
     def _create_mounts(self):
-        for mount_options in self.config["mounts"]:
-            components = self._configure_components(mount_options)
-            logging.debug("components: %s" % pprint.pformat(components))
-            entries = self._make_entries(components, mount_options["source"])
-            refresh = 0
-            if "refresh" in mount_options:
-                refresh = mount_options["refresh"]
-            if refresh > 0:
+        mounts = {}
+        for mount_config in self.config["mounts"]:
+            config = copy.deepcopy(mount_config)
+            if "name" not in config or not config["name"]:
+                config["name"] = uuid.uuid4()
+            config["components"] = self._configure_components(config)
+            if "refresh" not in config:
+                config["refresh"] = 0
+            if config["refresh"] > 0:
                 self.refresh = True # set if any mount config will refresh
-            self.mounts[mount_options["source"]] = {
-                    "config": mount_options,
-                    "components": components,
-                    "entries": entries,
-                    "refresh": refresh,
-                    "last_update": time.time(),
-                    }
+            mounts[config["name"]] = config
+        return mounts
 
     def _refresh(self):
         refresh_time = time.time()
-        for source,config in self.mounts.items():
+        for name,config in self.mounts.items():
             if config["refresh"] > 0:
                 if refresh_time - config["last_update"] > config["refresh"]:
                     logging.debug("refreshing %s" % source)
                     config["last_update"] = refresh_time
+                    # FIXME remakethis for sqlite
                     config["entries"] = self._make_entries(config["components"], source, config["entries"])
                     self.cache_reset()
 
